@@ -39,7 +39,7 @@ test_case() {
 test_case "Docker Compose syntax" "docker compose -f ../docker-compose.yml config"
 
 # Test 2: Environment variables
-test_case ".env.example exists" "[ -f ../env.example ]"
+test_case ".env.example exists" "[ -f ../.env.example ]"
 
 # Test 3: Traefik config
 test_case "Traefik config exists" "[ -f ../traefik/traefik.yml ]"
@@ -64,9 +64,9 @@ test_case "Frontend network defined" "docker compose -f ../docker-compose.yml co
 test_case "Backend network defined" "docker compose -f ../docker-compose.yml config | grep -q 'backend'"
 
 # Test 8: Services have healthchecks
-test_case "PostgreSQL healthcheck" "docker compose -f ../docker-compose.yml config | grep -A5 'postgres:' | grep -q 'healthcheck'"
-test_case "Redis healthcheck" "docker compose -f ../docker-compose.yml config | grep -A5 'redis:' | grep -q 'healthcheck'"
-test_case "n8n healthcheck" "docker compose -f ../docker-compose.yml config | grep -A5 'n8n:' | grep -q 'healthcheck'"
+test_case "PostgreSQL healthcheck" "grep -A20 'container_name: alfa-postgres' ../docker-compose.yml | grep -q 'healthcheck'"
+test_case "Redis healthcheck" "grep -A20 'container_name: alfa-redis' ../docker-compose.yml | grep -q 'healthcheck'"
+test_case "n8n healthcheck" "grep -A50 'container_name: alfa-n8n' ../docker-compose.yml | grep -q 'healthcheck'"
 
 echo ""
 echo "=============================="
