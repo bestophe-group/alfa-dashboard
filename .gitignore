@@ -1,0 +1,47 @@
+# Ignore patterns for ALFA-Agent-Method
+
+# Dependencies
+node_modules/
+vendor/
+.pnpm-store/
+
+# Docker volumes data
+data/
+postgres-data/
+redis-data/
+n8n-data/
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Temp files
+tmp/
+temp/
+*.tmp
+
+# Secrets (never commit)
+secrets/
+*.pem
+*.key
+*.crt
