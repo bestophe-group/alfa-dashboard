@@ -1,0 +1,118 @@
+{
+  "timestamp": "2026-01-07T03:29:29.687Z",
+  "total_tools": 91,
+  "domains": 14,
+  "tests": [
+    {
+      "test": "Server Startup",
+      "status": "PASS",
+      "output": "ALFA MCP Server running on stdio\n"
+    },
+    {
+      "test": "Tool Listing",
+      "status": "PASS",
+      "tools_found": 129,
+      "expected": 91
+    },
+    {
+      "test": "Tool: alfa_status",
+      "category": "Core ALFA",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_grafana_create_dashboard",
+      "category": "Grafana",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_powerbi_create_dataset",
+      "category": "Power BI",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_osint_company_research",
+      "category": "OSINT",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_etl_csv_transform",
+      "category": "ETL",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_design_brand_identity",
+      "category": "Communication",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_chatgpt_task",
+      "category": "Agents",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_claude_create_project",
+      "category": "Claude Code",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_slack_send_message",
+      "category": "Collaboration",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_aws_s3_management",
+      "category": "Infrastructure",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_payfit_employees",
+      "category": "Business SaaS",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_wordpress_site_management",
+      "category": "CMS",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_github_repo_management",
+      "category": "Developer",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_azure_sso_app_registration",
+      "category": "Azure SSO",
+      "status": "PASS"
+    },
+    {
+      "test": "Tool: alfa_obsidian_create_note",
+      "category": "Productivity",
+      "status": "PASS"
+    },
+    {
+      "test": "Docker MCP Gateway",
+      "status": "WARN",
+      "output": "Docker MCP Toolkit's CLI - Manage your MCP servers and clients.\n\nUsage: docker mcp gateway\n\nAvailable Commands:\n  run         Run the gateway\n\n",
+      "note": "Gateway should show alfa-dashboard server"
+    },
+    {
+      "test": "Config: Claude Desktop",
+      "status": "PASS",
+      "file": "/Users/arnaud/Library/Application Support/Claude/claude_desktop_config.json",
+      "has_alfa": true
+    },
+    {
+      "test": "Config: Cursor",
+      "status": "PASS",
+      "file": "/Users/arnaud/.cursor/mcp.json",
+      "has_alfa": true
+    }
+  ],
+  "summary": {
+    "total_tests": 20,
+    "passed": 19,
+    "failed": 0,
+    "warnings": 1,
+    "success_rate": "95.0%"
+  }
+}
