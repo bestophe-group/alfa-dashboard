@@ -1,0 +1,136 @@
+{
+  "name": "P0-41 Falco Intrusion Detection",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "falco-alerts",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Falco",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const event = $input.item.json;\nconst priority = event.priority || 'Info';\nconst rule = event.rule || 'Unknown';\nconst output = event.output || 'No details';\nconst container = event.output_fields?.container_name || 'N/A';\n\nreturn {\n  json: {\n    severity: priority,\n    rule: rule,\n    description: output,\n    container: container,\n    timestamp: new Date().toISOString(),\n    source: 'falco',\n    tags: event.tags || []\n  }\n};"
+      },
+      "name": "Parse Falco Event",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.severity}}",
+              "operation": "equals",
+              "value2": "Critical"
+            }
+          ]
+        }
+      },
+      "name": "Is Critical?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "security_events",
+        "columns": "severity,rule,description,container_name,event_data,created_at",
+        "additionalFields": {}
+      },
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [850, 200],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#critical-alerts",
+        "text": ":rotating_light: **CRITICAL SECURITY ALERT** :rotating_light:\\n\\n**Rule:** {{$json.rule}}\\n**Container:** {{$json.container}}\\n**Details:** {{$json.description}}\\n**Time:** {{$json.timestamp}}",
+        "otherOptions": {}
+      },
+      "name": "Notify Slack Critical",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [850, 400],
+      "credentials": {
+        "slackApi": {
+          "id": "2",
+          "name": "Slack ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "channelId": "{{$json.channel_id}}",
+        "message": "Falco security event logged: {{$json.rule}}"
+      },
+      "name": "Notify Slack Info",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [850, 100],
+      "credentials": {
+        "slackApi": {
+          "id": "2",
+          "name": "Slack ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{JSON.stringify({status: 'received', severity: $json.severity})}}",
+        "options": {}
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Falco": {
+      "main": [[{"node": "Parse Falco Event", "type": "main", "index": 0}]]
+    },
+    "Parse Falco Event": {
+      "main": [[{"node": "Is Critical?", "type": "main", "index": 0}]]
+    },
+    "Is Critical?": {
+      "main": [
+        [{"node": "Log to PostgreSQL", "type": "main", "index": 0}, {"node": "Notify Slack Critical", "type": "main", "index": 0}],
+        [{"node": "Log to PostgreSQL", "type": "main", "index": 0}, {"node": "Notify Slack Info", "type": "main", "index": 0}]
+      ]
+    },
+    "Log to PostgreSQL": {
+      "main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]
+    },
+    "Notify Slack Critical": {
+      "main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]
+    },
+    "Notify Slack Info": {
+      "main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]
+    }
+  },
+  "active": true,
+  "settings": {
+    "timezone": "Europe/Paris"
+  },
+  "tags": ["P0", "security", "falco"]
+}

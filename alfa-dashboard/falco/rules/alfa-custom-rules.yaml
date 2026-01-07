@@ -1,0 +1,74 @@
+- rule: Unauthorized Container Access
+  desc: Detect unauthorized access to sensitive containers
+  condition: >
+    container and
+    container.name in (alfa-postgres, alfa-redis, alfa-authentik) and
+    not proc.name in (postgres, redis-server, authentik)
+  output: >
+    Unauthorized access to sensitive container
+    (user=%user.name command=%proc.cmdline container=%container.name image=%container.image.repository)
+  priority: WARNING
+  tags: [container, security]
+
+- rule: Sensitive File Access in Container
+  desc: Detect access to sensitive files in containers
+  condition: >
+    open_read and
+    container and
+    fd.name in (/etc/shadow, /etc/passwd, /root/.ssh/id_rsa, /home/*/.ssh/id_rsa) and
+    not proc.name in (sshd, useradd, usermod)
+  output: >
+    Sensitive file accessed in container
+    (user=%user.name file=%fd.name command=%proc.cmdline container=%container.name)
+  priority: ERROR
+  tags: [filesystem, security]
+
+- rule: Container Privilege Escalation Attempt
+  desc: Detect privilege escalation attempts in containers
+  condition: >
+    container and
+    proc.name in (sudo, su, doas) and
+    not container.privileged=true
+  output: >
+    Privilege escalation attempt in container
+    (user=%user.name command=%proc.cmdline container=%container.name)
+  priority: ERROR
+  tags: [privilege_escalation, security]
+
+- rule: Unexpected Network Connection from Container
+  desc: Detect unexpected outbound network connections
+  condition: >
+    outbound and
+    container and
+    not fd.sip in (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) and
+    not proc.name in (curl, wget, apt-get, yum, npm, pip)
+  output: >
+    Unexpected network connection from container
+    (user=%user.name connection=%fd.name command=%proc.cmdline container=%container.name)
+  priority: WARNING
+  tags: [network, security]
+
+- rule: Critical Binary Execution in Container
+  desc: Detect execution of critical system binaries
+  condition: >
+    spawned_process and
+    container and
+    proc.name in (nc, netcat, nmap, tcpdump, wireshark)
+  output: >
+    Critical binary executed in container
+    (user=%user.name command=%proc.cmdline container=%container.name)
+  priority: ERROR
+  tags: [process, security]
+
+- rule: Database Sensitive Command Execution
+  desc: Detect sensitive database operations
+  condition: >
+    spawned_process and
+    container.name = alfa-postgres and
+    proc.name in (psql) and
+    proc.cmdline contains "DROP DATABASE"
+  output: >
+    Sensitive database command executed
+    (user=%user.name command=%proc.cmdline container=%container.name)
+  priority: ERROR
+  tags: [database, security]

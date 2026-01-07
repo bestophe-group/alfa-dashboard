@@ -1,0 +1,49 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://alfa-prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: 15s
+      queryTimeout: 60s
+      httpMethod: POST
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://alfa-loki:3100
+    editable: true
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: "traceID=(\\w+)"
+          name: TraceID
+          url: "$${__value.raw}"
+
+  - name: PostgreSQL
+    type: postgres
+    url: alfa-postgres:5432
+    database: alfa
+    user: ${POSTGRES_USER:-alfa}
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD:-alfapass123}
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 100
+      maxIdleConns: 100
+      connMaxLifetime: 14400
+      postgresVersion: 1600
+      timescaledb: false
+
+  - name: Alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alfa-alertmanager:9093
+    editable: true
+    jsonData:
+      implementation: prometheus

@@ -1,0 +1,96 @@
+{
+  "dashboard": {
+    "title": "ALFA - Security Dashboard",
+    "tags": ["security", "falco", "trivy"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "type": "stat",
+        "title": "Falco Critical Alerts (24h)",
+        "targets": [
+          {
+            "expr": "sum(increase(falcosidekick_events_total{priority=\"Critical\"}[24h]))",
+            "legendFormat": "Critical Events"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "orange"},
+                {"value": 5, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "type": "stat",
+        "title": "Authentication Failures (1h)",
+        "targets": [
+          {
+            "expr": "sum(rate(authentik_auth_failed_total[1h])) * 3600",
+            "legendFormat": "Failed Logins"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 10, "color": "yellow"},
+                {"value": 50, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": {"h": 10, "w": 24, "x": 0, "y": 8},
+        "type": "table",
+        "title": "Falco Security Events (Last 50)",
+        "targets": [
+          {
+            "expr": "topk(50, falcosidekick_events_total)",
+            "format": "table",
+            "instant": true
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18},
+        "type": "timeseries",
+        "title": "Security Events Timeline",
+        "targets": [
+          {
+            "expr": "sum by (priority) (rate(falcosidekick_events_total[5m]))",
+            "legendFormat": "{{priority}}"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18},
+        "type": "piechart",
+        "title": "Security Events by Priority",
+        "targets": [
+          {
+            "expr": "sum by (priority) (increase(falcosidekick_events_total[24h]))",
+            "legendFormat": "{{priority}}"
+          }
+        ]
+      }
+    ],
+    "refresh": "30s",
+    "time": {"from": "now-24h", "to": "now"}
+  }
+}

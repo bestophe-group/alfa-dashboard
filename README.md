@@ -98,62 +98,93 @@ docker compose up -d
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| n8n | `https://n8n.alfa.local` | Workflow automation |
-| Authentik | `https://auth.alfa.local` | SSO management |
-| Uptime Kuma | `https://status.alfa.local` | Service monitoring |
 | Traefik | `https://traefik.alfa.local` | Reverse proxy dashboard |
+| Authentik | `https://auth.alfa.local` | SSO management |
+| n8n | `https://n8n.alfa.local` | Workflow automation |
+| Grafana | `https://grafana.alfa.local` | Monitoring dashboards |
+| Prometheus | `https://prometheus.alfa.local` | Metrics & alerts |
+| Alertmanager | `https://alerts.alfa.local` | Alert management |
+| Uptime Kuma | `https://status.alfa.local` | Service health |
+| Backstage | `https://portal.alfa.local` | Developer portal |
 
 ## Services
 
 ### Core Infrastructure
 
-- **Traefik** - Reverse proxy with automatic TLS
-- **PostgreSQL** - Primary database
+- **Traefik** - Reverse proxy with automatic TLS & metrics
+- **PostgreSQL** - Primary database (with Service Desk & Backstage schemas)
 - **Redis** - Cache and message queue
 
 ### Identity & Security
 
 - **Authentik** - SSO identity provider (OIDC, SAML, LDAP)
+- **Falco** - Runtime security & intrusion detection
+- **Falcosidekick** - Security alert routing to n8n & Slack
+- **Trivy** - Daily vulnerability scanning
+
+### Monitoring & Observability
+
+- **Prometheus** - Metrics collection & time-series database
+- **Loki** - Log aggregation & querying
+- **Promtail** - Log shipper for Docker containers
+- **Grafana** - Unified visualization dashboards
+  - Security Dashboard (Falco alerts, auth failures)
+  - Executive Dashboard (SLA, uptime, incidents)
+  - Operations Dashboard (CPU, memory, network, logs)
+- **Alertmanager** - Multi-channel alert routing
+- **Node Exporter** - Host metrics collection
+- **cAdvisor** - Container metrics collection
+- **Uptime Kuma** - Service health monitoring
+- **ALFA Watchdog** - Container auto-restart daemon
 
 ### Automation
 
 - **n8n** - Visual workflow automation engine
-- **40+ workflows** organized by priority (P0-P3)
+- **13+ workflows** organized by priority:
+  - **P0** (5): Falco intrusion detection, Trivy scanning, incident response, auto-isolation, critical alerts
+  - **P1** (5): Azure AD password reset, SharePoint creation, PennyLane/PayFit sync, service desk handler
+  - **P2** (3): User onboarding/offboarding, Teams channel creation
+  - **P3**: OSINT, cyber threat watch, morning rituals
 
-### Monitoring
+### Platform Engineering
 
-- **Uptime Kuma** - Service health monitoring
-- **ALFA Watchdog** - Container auto-restart daemon
+- **Backstage** - Developer portal with self-service
+  - Service catalog
+  - TechDocs documentation
+  - Golden Paths templates (Node, React, Python)
+  - Software templates for standardized deployments
 
 ## Workflow Organization
 
-### P0 - Critical (Always Running)
+### P0 - Critical (Security & Infrastructure)
 
-- `P0-001-health-check-ping.json` - System heartbeat
-- `P0-002-container-monitoring.json` - Docker health
-- `P0-003-ssl-certificate-monitor.json` - TLS expiry alerts
-- `P0-004-backup-automation.json` - Automated backups
-- `P0-005-incident-management.json` - Alert handling
+- `41-falco-intrusion-detect.json` - Runtime security events from Falco
+- `42-trivy-daily-scan.json` - Daily vulnerability scanning
+- `43-incident-response-playbook.json` - Automated incident response
+- `44-auto-isolation.json` - Automatic container isolation on compromise
+- `45-critical-alert-handler.json` - Multi-channel critical alerts
 
-### P1 - Core Business
+### P1 - Core Business & Admin
 
-- Webhook handlers for GitHub, GitLab
-- Slack/Discord notifications
-- Invoice monitoring (PennyLane)
-- Employee management (PayFit)
+- `46-password-reset-azure.json` - Azure AD password reset automation
+- `47-sharepoint-create.json` - SharePoint site & library creation
+- `48-pennylane-invoice-sync.json` - PennyLane invoice sync (every 6h)
+- `49-payfit-employee-export.json` - PayFit employee export (weekly)
+- `50-service-request-handler.json` - Service Desk request router
 
-### P2 - Integrations
+### P2 - HR & Integrations
 
-- Linear/Notion project sync
-- Sentry error routing
-- AI evaluation pipelines
-- OSINT automation
+- `52-user-onboarding.json` - Automated user onboarding (Azure AD, email, access)
+- `53-user-offboarding.json` - Automated user offboarding (disable, revoke sessions)
+- `54-teams-channel-create.json` - Microsoft Teams channel creation
+- Linear/Notion project sync (planned)
+- Sentry error routing (planned)
 
-### P3 - Experimental
+### P3 - Intelligence & Experimental
 
-- Coffee roulette matching
-- Daily inspiration quotes
-- Tech news aggregation
+- OSINT company/executive scans (planned)
+- Cyber threat intelligence watch (planned)
+- Morning ritual automations (planned)
 
 ## Resilience Features
 

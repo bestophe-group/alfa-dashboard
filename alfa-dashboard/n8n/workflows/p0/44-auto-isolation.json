@@ -1,0 +1,69 @@
+{
+  "name": "P0-44 Auto Isolation on Compromise",
+  "nodes": [
+    {
+      "parameters": {"httpMethod": "POST", "path": "auto-isolate"},
+      "name": "Compromise Detected",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const container = $json.container_name;\nconst severity = $json.severity || 'high';\nconst action = severity === 'critical' ? 'stop' : 'pause';\n\nreturn {json: {container, severity, action, timestamp: new Date().toISOString()}};"
+      },
+      "name": "Determine Action",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {"command": "docker network disconnect alfa-network {{$json.container}}"},
+      "name": "Disconnect Network",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {"command": "docker {{$json.action}} {{$json.container}}"},
+      "name": "Stop or Pause",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [650, 400]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "isolation_log",
+        "columns": "container_name,action,severity,reason,isolated_at"
+      },
+      "name": "Log Isolation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "credentials": {"postgres": {"id": "1"}}
+    },
+    {
+      "parameters": {
+        "channel": "#security",
+        "text": ":no_entry: **CONTAINER ISOLATED** :no_entry:\\n\\n**Container:** {{$json.container}}\\n**Action:** {{$json.action}}\\n**Severity:** {{$json.severity}}\\n**Time:** {{$json.timestamp}}"
+      },
+      "name": "Alert Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [1050, 300],
+      "credentials": {"slackApi": {"id": "2"}}
+    }
+  ],
+  "connections": {
+    "Compromise Detected": {"main": [[{"node": "Determine Action"}]]},
+    "Determine Action": {"main": [[{"node": "Disconnect Network"}, {"node": "Stop or Pause"}]]},
+    "Disconnect Network": {"main": [[{"node": "Log Isolation"}]]},
+    "Stop or Pause": {"main": [[{"node": "Log Isolation"}]]},
+    "Log Isolation": {"main": [[{"node": "Alert Team"}]]}
+  },
+  "active": true,
+  "settings": {"timezone": "Europe/Paris"},
+  "tags": ["P0", "security", "isolation"]
+}

@@ -1,0 +1,133 @@
+{
+  "name": "P0-42 Trivy Daily Vulnerability Scan",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "cronExpression", "expression": "0 2 * * *"}]
+        }
+      },
+      "name": "Schedule Daily 2AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const images = [\n  'traefik:v3.3',\n  'postgres:16-alpine',\n  'redis:7-alpine',\n  'ghcr.io/goauthentik/server:2024.10',\n  'n8nio/n8n:latest',\n  'louislam/uptime-kuma:1',\n  'prom/prometheus:latest',\n  'grafana/loki:latest',\n  'grafana/grafana:latest',\n  'prom/alertmanager:latest',\n  'aquasec/trivy:latest'\n];\n\nreturn images.map(image => ({json: {image}}));"
+      },
+      "name": "List Images to Scan",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "command": "docker exec alfa-trivy trivy image --format json --severity HIGH,CRITICAL --quiet {{$json.image}}",
+        "options": {}
+      },
+      "name": "Run Trivy Scan",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const scanResult = JSON.parse($input.item.json.stdout || '{}');\nconst image = $input.item.json.image;\nconst vulnerabilities = scanResult.Results?.[0]?.Vulnerabilities || [];\n\nconst criticalCount = vulnerabilities.filter(v => v.Severity === 'CRITICAL').length;\nconst highCount = vulnerabilities.filter(v => v.Severity === 'HIGH').length;\n\nreturn {\n  json: {\n    image: image,\n    scan_date: new Date().toISOString(),\n    critical_count: criticalCount,\n    high_count: highCount,\n    total_vulns: vulnerabilities.length,\n    vulnerabilities: vulnerabilities.slice(0, 10),\n    has_critical: criticalCount > 0\n  }\n};"
+      },
+      "name": "Parse Scan Results",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "vulnerability_scans",
+        "columns": "image_name,scan_date,critical_count,high_count,total_count,scan_data",
+        "additionalFields": {}
+      },
+      "name": "Save to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1050, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.has_critical}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Has Critical Vulns?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#security",
+        "text": ":warning: **CRITICAL VULNERABILITIES DETECTED** :warning:\\n\\n**Image:** {{$json.image}}\\n**Critical:** {{$json.critical_count}}\\n**High:** {{$json.high_count}}\\n**Total:** {{$json.total_vulns}}\\n\\nPlease review and update the image.",
+        "otherOptions": {}
+      },
+      "name": "Alert Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [1450, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "2",
+          "name": "Slack ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Aggregate all scan results\nconst results = $input.all();\nconst totalImages = results.length;\nconst imagesWithCritical = results.filter(r => r.json.has_critical).length;\nconst totalCritical = results.reduce((sum, r) => sum + r.json.critical_count, 0);\nconst totalHigh = results.reduce((sum, r) => sum + r.json.high_count, 0);\n\nreturn {\n  json: {\n    scan_date: new Date().toISOString(),\n    total_images: totalImages,\n    images_with_critical: imagesWithCritical,\n    total_critical_vulns: totalCritical,\n    total_high_vulns: totalHigh\n  }\n};"
+      },
+      "name": "Generate Summary",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1450, 400]
+    }
+  ],
+  "connections": {
+    "Schedule Daily 2AM": {
+      "main": [[{"node": "List Images to Scan", "type": "main", "index": 0}]]
+    },
+    "List Images to Scan": {
+      "main": [[{"node": "Run Trivy Scan", "type": "main", "index": 0}]]
+    },
+    "Run Trivy Scan": {
+      "main": [[{"node": "Parse Scan Results", "type": "main", "index": 0}]]
+    },
+    "Parse Scan Results": {
+      "main": [[{"node": "Save to PostgreSQL", "type": "main", "index": 0}]]
+    },
+    "Save to PostgreSQL": {
+      "main": [[{"node": "Has Critical Vulns?", "type": "main", "index": 0}]]
+    },
+    "Has Critical Vulns?": {
+      "main": [
+        [{"node": "Alert Slack", "type": "main", "index": 0}, {"node": "Generate Summary", "type": "main", "index": 0}],
+        [{"node": "Generate Summary", "type": "main", "index": 0}]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "timezone": "Europe/Paris"
+  },
+  "tags": ["P0", "security", "trivy", "vulnerability"]
+}

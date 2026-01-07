@@ -1,0 +1,12 @@
+{
+  "name": "P1-47 SharePoint Site Creation",
+  "nodes": [
+    {"parameters": {"httpMethod": "POST", "path": "sharepoint-create"}, "name": "Webhook", "type": "n8n-nodes-base.webhook", "position": [250, 300]},
+    {"parameters": {"url": "https://graph.microsoft.com/v1.0/sites/{site-id}/sites", "authentication": "predefinedCredentialType", "nodeCredentialType": "microsoftEntraOAuth2Api", "requestMethod": "POST", "jsonParameters": true, "bodyParametersJson": "={{JSON.stringify({displayName: $json.site_name, name: $json.site_slug, webTemplate: 'STS#3'})}}"}, "name": "Create Site", "type": "n8n-nodes-base.httpRequest", "position": [450, 300]},
+    {"parameters": {"url": "https://graph.microsoft.com/v1.0/sites/{{$json.id}}/lists", "requestMethod": "POST", "bodyParametersJson": "={{JSON.stringify({displayName: 'Documents', list: {template: 'documentLibrary'}})}}"}, "name": "Create Library", "type": "n8n-nodes-base.httpRequest", "position": [650, 300]},
+    {"parameters": {"channel": "#service-desk", "text": ":white_check_mark: SharePoint site created: {{$json.site_name}}"}, "name": "Notify", "type": "n8n-nodes-base.slack", "position": [850, 300]}
+  ],
+  "connections": {"Webhook": {"main": [[{"node": "Create Site"}]]}, "Create Site": {"main": [[{"node": "Create Library"}]]}, "Create Library": {"main": [[{"node": "Notify"}]]}},
+  "active": true,
+  "tags": ["P1", "sharepoint", "microsoft"]
+}

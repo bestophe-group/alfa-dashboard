@@ -1,0 +1,122 @@
+groups:
+  - name: alfa_infrastructure
+    interval: 30s
+    rules:
+      # Container down alert
+      - alert: ContainerDown
+        expr: up{job=~"traefik|n8n|postgres|redis|grafana"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "Container {{ $labels.job }} is down"
+          description: "Container {{ $labels.job }} has been down for more than 2 minutes"
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High CPU usage on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} CPU usage is above 80% for 5 minutes"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High memory usage on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} memory usage is above 90%"
+
+      # Disk space critical
+      - alert: DiskSpaceCritical
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          category: infrastructure
+        annotations:
+          summary: "Disk space critical on {{ $labels.instance }}"
+          description: "Less than 10% disk space remaining on {{ $labels.mountpoint }}"
+
+  - name: alfa_application
+    interval: 30s
+    rules:
+      # n8n workflow failures
+      - alert: N8NWorkflowFailureRate
+        expr: rate(n8n_workflow_executions_failed_total[10m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          category: application
+        annotations:
+          summary: "High n8n workflow failure rate"
+          description: "n8n workflow failure rate is above 10% for 10 minutes"
+
+      # PostgreSQL connection issues
+      - alert: PostgreSQLDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database is unreachable"
+
+      # Redis down
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: cache
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache is unreachable"
+
+  - name: alfa_security
+    interval: 30s
+    rules:
+      # Falco critical alerts
+      - alert: FalcoCriticalSecurityEvent
+        expr: increase(falcosidekick_events_total{priority="Critical"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Critical security event detected by Falco"
+          description: "Falco detected a critical security event"
+
+      # Too many authentication failures
+      - alert: HighAuthenticationFailures
+        expr: rate(authentik_auth_failed_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High authentication failure rate"
+          description: "More than 5 authentication failures per minute detected"
+
+  - name: alfa_backup
+    interval: 1h
+    rules:
+      # Backup not running
+      - alert: BackupNotRunning
+        expr: time() - last_backup_timestamp_seconds > 86400
+        for: 1h
+        labels:
+          severity: warning
+          category: backup
+        annotations:
+          summary: "Backup has not run in 24 hours"
+          description: "Last backup was more than 24 hours ago"

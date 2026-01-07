@@ -1,0 +1,152 @@
+{
+  "dashboard": {
+    "title": "ALFA - Executive Dashboard",
+    "tags": ["executive", "kpi", "sla"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+        "type": "stat",
+        "title": "Overall System Uptime (30d)",
+        "targets": [
+          {
+            "expr": "avg(up{job=~\"traefik|n8n|postgres|redis|grafana\"}) * 100",
+            "legendFormat": "Uptime %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 95, "color": "yellow"},
+                {"value": 99, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+        "type": "stat",
+        "title": "Active Incidents",
+        "targets": [
+          {
+            "expr": "count(ALERTS{alertstate=\"firing\"})",
+            "legendFormat": "Active"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 5, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+        "type": "stat",
+        "title": "n8n Workflows Success Rate (24h)",
+        "targets": [
+          {
+            "expr": "(sum(increase(n8n_workflow_executions_success_total[24h])) / sum(increase(n8n_workflow_executions_total[24h]))) * 100",
+            "legendFormat": "Success %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 90, "color": "yellow"},
+                {"value": 95, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+        "type": "stat",
+        "title": "Security Events (24h)",
+        "targets": [
+          {
+            "expr": "sum(increase(falcosidekick_events_total[24h]))",
+            "legendFormat": "Events"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 10, "color": "yellow"},
+                {"value": 50, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+        "type": "timeseries",
+        "title": "Service Health Over Time",
+        "targets": [
+          {
+            "expr": "avg_over_time(up{job=~\"traefik|n8n|postgres|redis|grafana\"}[1h])",
+            "legendFormat": "{{job}}"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+        "type": "bargauge",
+        "title": "Resource Utilization",
+        "targets": [
+          {
+            "expr": "avg(rate(container_cpu_usage_seconds_total[5m])) by (name) * 100",
+            "legendFormat": "{{name}} CPU %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "max": 100
+          }
+        }
+      },
+      {
+        "id": 7,
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 14},
+        "type": "table",
+        "title": "Incident Summary (Last 7 days)",
+        "targets": [
+          {
+            "expr": "count by (alertname, severity) (ALERTS{alertstate=\"firing\"})",
+            "format": "table",
+            "instant": true
+          }
+        ]
+      }
+    ],
+    "refresh": "1m",
+    "time": {"from": "now-30d", "to": "now"}
+  }
+}

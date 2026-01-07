@@ -1,0 +1,102 @@
+{
+  "name": "P0-43 Incident Response Playbook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incident-trigger",
+        "responseMode": "responseNode"
+      },
+      "name": "Incident Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "incidents",
+        "columns": "title,severity,description,status,container_name,triggered_by,created_at"
+      },
+      "name": "Create Incident Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "credentials": {"postgres": {"id": "1", "name": "PostgreSQL ALFA"}}
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [{"value1": "={{$json.severity}}", "operation": "equals", "value2": "critical"}]
+        }
+      },
+      "name": "Is Critical?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "command": "docker stop {{$json.container_name}}"
+      },
+      "name": "Isolate Container",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "command": "docker commit {{$json.container_name}} alfa-incident-{{$json.incident_id}}"
+      },
+      "name": "Snapshot Container",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [850, 100]
+    },
+    {
+      "parameters": {
+        "channel": "#critical-incidents",
+        "text": ":rotating_light: **CRITICAL INCIDENT** :rotating_light:\\n\\n**Title:** {{$json.title}}\\n**Container:** {{$json.container_name}}\\n**Action:** Container isolated & snapshot created\\n**Incident ID:** {{$json.incident_id}}"
+      },
+      "name": "Alert Critical",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [1050, 200],
+      "credentials": {"slackApi": {"id": "2", "name": "Slack ALFA"}}
+    },
+    {
+      "parameters": {
+        "channel": "#incidents",
+        "text": ":warning: New incident logged: {{$json.title}}"
+      },
+      "name": "Alert Standard",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [850, 400],
+      "credentials": {"slackApi": {"id": "2", "name": "Slack ALFA"}}
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{JSON.stringify({incident_id: $json.incident_id, status: 'created'})}}"
+      },
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Incident Webhook": {"main": [[{"node": "Create Incident Record"}]]},
+    "Create Incident Record": {"main": [[{"node": "Is Critical?"}]]},
+    "Is Critical?": {"main": [[{"node": "Snapshot Container"}, {"node": "Isolate Container"}], [{"node": "Alert Standard"}]]},
+    "Snapshot Container": {"main": [[{"node": "Alert Critical"}]]},
+    "Isolate Container": {"main": [[{"node": "Alert Critical"}]]},
+    "Alert Critical": {"main": [[{"node": "Respond"}]]},
+    "Alert Standard": {"main": [[{"node": "Respond"}]]}
+  },
+  "active": true,
+  "settings": {"timezone": "Europe/Paris"},
+  "tags": ["P0", "incident", "response"]
+}

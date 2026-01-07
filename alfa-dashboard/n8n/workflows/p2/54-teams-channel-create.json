@@ -1,0 +1,11 @@
+{
+  "name": "P2-54 Teams Channel Creation",
+  "nodes": [
+    {"parameters": {"httpMethod": "POST", "path": "teams-channel"}, "name": "Trigger", "type": "n8n-nodes-base.webhook", "position": [250, 300]},
+    {"parameters": {"url": "https://graph.microsoft.com/v1.0/teams/{{$json.team_id}}/channels", "requestMethod": "POST", "bodyParametersJson": "={{JSON.stringify({displayName: $json.channel_name, description: $json.description})}}"}, "name": "Create Channel", "type": "n8n-nodes-base.httpRequest", "position": [450, 300]},
+    {"parameters": {"channel": "#service-desk", "text": ":speech_balloon: Teams channel created: {{$json.channel_name}}"}, "name": "Notify", "type": "n8n-nodes-base.slack", "position": [650, 300]}
+  ],
+  "connections": {"Trigger": {"main": [[{"node": "Create Channel"}]]}, "Create Channel": {"main": [[{"node": "Notify"}]]}},
+  "active": true,
+  "tags": ["P2", "teams", "microsoft"]
+}

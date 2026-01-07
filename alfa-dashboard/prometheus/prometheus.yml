@@ -1,0 +1,73 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'alfa-dashboard'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alfa-alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "/etc/prometheus/alerts/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Traefik metrics
+  - job_name: 'traefik'
+    static_configs:
+      - targets: ['alfa-traefik:8080']
+    metrics_path: '/metrics'
+
+  # n8n metrics
+  - job_name: 'n8n'
+    static_configs:
+      - targets: ['alfa-n8n:5678']
+    metrics_path: '/metrics'
+
+  # Node Exporter (host metrics)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['alfa-node-exporter:9100']
+
+  # cAdvisor (container metrics)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['alfa-cadvisor:8080']
+
+  # Grafana
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['alfa-grafana:3000']
+
+  # PostgreSQL Exporter (if added later)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['alfa-postgres:5432']
+    scrape_interval: 30s
+
+  # Redis Exporter (if added later)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['alfa-redis:6379']
+    scrape_interval: 30s
+
+  # Alertmanager
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alfa-alertmanager:9093']
+
+  # Loki
+  - job_name: 'loki'
+    static_configs:
+      - targets: ['alfa-loki:3100']

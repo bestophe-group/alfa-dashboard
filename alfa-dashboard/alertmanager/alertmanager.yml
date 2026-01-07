@@ -1,0 +1,86 @@
+global:
+  resolve_timeout: 5m
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  routes:
+    # Critical alerts go to multiple channels
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      continue: true
+
+    # Security alerts
+    - match:
+        category: security
+      receiver: 'security-team'
+      continue: true
+
+    # Infrastructure alerts
+    - match:
+        category: infrastructure
+      receiver: 'ops-team'
+
+    # Application alerts
+    - match:
+        category: application
+      receiver: 'dev-team'
+
+receivers:
+  - name: 'default'
+    webhook_configs:
+      - url: 'http://alfa-n8n:5678/webhook/alerts-default'
+        send_resolved: true
+
+  - name: 'critical-alerts'
+    webhook_configs:
+      - url: 'http://alfa-n8n:5678/webhook/alerts-critical'
+        send_resolved: true
+    slack_configs:
+      - channel: '#critical-alerts'
+        title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+
+  - name: 'security-team'
+    webhook_configs:
+      - url: 'http://alfa-n8n:5678/webhook/alerts-security'
+        send_resolved: true
+    slack_configs:
+      - channel: '#security'
+        title: '🔒 Security Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+
+  - name: 'ops-team'
+    webhook_configs:
+      - url: 'http://alfa-n8n:5678/webhook/alerts-ops'
+        send_resolved: true
+    slack_configs:
+      - channel: '#ops'
+        title: '⚙️ Ops Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+
+  - name: 'dev-team'
+    webhook_configs:
+      - url: 'http://alfa-n8n:5678/webhook/alerts-dev'
+        send_resolved: true
+    slack_configs:
+      - channel: '#dev'
+        title: '🔧 Dev Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+
+inhibit_rules:
+  # Inhibit warning if critical is firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'cluster', 'service']

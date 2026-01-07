@@ -1,0 +1,170 @@
+{
+  "dashboard": {
+    "title": "ALFA - Operations Dashboard",
+    "tags": ["operations", "infrastructure", "containers"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "type": "timeseries",
+        "title": "Container CPU Usage",
+        "targets": [
+          {
+            "expr": "rate(container_cpu_usage_seconds_total{name=~\"alfa-.*\"}[5m]) * 100",
+            "legendFormat": "{{name}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "type": "timeseries",
+        "title": "Container Memory Usage",
+        "targets": [
+          {
+            "expr": "container_memory_usage_bytes{name=~\"alfa-.*\"} / 1024 / 1024",
+            "legendFormat": "{{name}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "decmbytes"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "type": "timeseries",
+        "title": "Disk Space Usage",
+        "targets": [
+          {
+            "expr": "(node_filesystem_size_bytes - node_filesystem_avail_bytes) / node_filesystem_size_bytes * 100",
+            "legendFormat": "{{mountpoint}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "max": 100
+          }
+        }
+      },
+      {
+        "id": 4,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "type": "timeseries",
+        "title": "Network I/O",
+        "targets": [
+          {
+            "expr": "rate(container_network_receive_bytes_total{name=~\"alfa-.*\"}[5m])",
+            "legendFormat": "{{name}} RX"
+          },
+          {
+            "expr": "rate(container_network_transmit_bytes_total{name=~\"alfa-.*\"}[5m])",
+            "legendFormat": "{{name}} TX"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "Bps"
+          }
+        }
+      },
+      {
+        "id": 5,
+        "gridPos": {"h": 6, "w": 8, "x": 0, "y": 16},
+        "type": "stat",
+        "title": "PostgreSQL Connections",
+        "targets": [
+          {
+            "expr": "pg_stat_database_numbackends{datname=\"alfa\"}",
+            "legendFormat": "Active Connections"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "gridPos": {"h": 6, "w": 8, "x": 8, "y": 16},
+        "type": "stat",
+        "title": "Redis Connected Clients",
+        "targets": [
+          {
+            "expr": "redis_connected_clients",
+            "legendFormat": "Clients"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "gridPos": {"h": 6, "w": 8, "x": 16, "y": 16},
+        "type": "stat",
+        "title": "n8n Active Workflows",
+        "targets": [
+          {
+            "expr": "n8n_workflows_active_total",
+            "legendFormat": "Active"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 22},
+        "type": "logs",
+        "title": "Recent Container Logs",
+        "targets": [
+          {
+            "expr": "{container=~\"alfa-.*\"} |= \"error\" or \"warning\"",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showTime": true,
+          "showLabels": true,
+          "wrapLogMessage": true
+        }
+      },
+      {
+        "id": 9,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30},
+        "type": "timeseries",
+        "title": "HTTP Request Rate (Traefik)",
+        "targets": [
+          {
+            "expr": "rate(traefik_entrypoint_requests_total[5m])",
+            "legendFormat": "{{entrypoint}}"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30},
+        "type": "timeseries",
+        "title": "HTTP Response Times (Traefik)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(traefik_entrypoint_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(traefik_entrypoint_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p99"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        }
+      }
+    ],
+    "refresh": "30s",
+    "time": {"from": "now-6h", "to": "now"}
+  }
+}

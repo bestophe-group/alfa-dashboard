@@ -1,0 +1,12 @@
+{
+  "name": "P1-49 PayFit Employee Export",
+  "nodes": [
+    {"parameters": {"rule": {"interval": [{"field": "cronExpression", "expression": "0 8 * * 1"}]}}, "name": "Weekly Monday 8AM", "type": "n8n-nodes-base.scheduleTrigger", "position": [250, 300]},
+    {"parameters": {"url": "https://partner-api.payfit.com/companies/{companyId}/employees", "authentication": "genericCredentialType", "genericAuthType": "oAuth2Api"}, "name": "Fetch Employees", "type": "n8n-nodes-base.httpRequest", "position": [450, 300]},
+    {"parameters": {"operation": "insert", "table": "employees", "columns": "employee_id,first_name,last_name,email,department,start_date,synced_at"}, "name": "Save to DB", "type": "n8n-nodes-base.postgres", "position": [650, 300]},
+    {"parameters": {"channel": "#hr", "text": "{{$json.count}} employees synced from PayFit"}, "name": "Notify", "type": "n8n-nodes-base.slack", "position": [850, 300]}
+  ],
+  "connections": {"Weekly Monday 8AM": {"main": [[{"node": "Fetch Employees"}]]}, "Fetch Employees": {"main": [[{"node": "Save to DB"}]]}, "Save to DB": {"main": [[{"node": "Notify"}]]}},
+  "active": true,
+  "tags": ["P1", "payfit", "hr"]
+}

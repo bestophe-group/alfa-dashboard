@@ -1,0 +1,69 @@
+{
+  "name": "P0-45 Critical Alert Multi-Channel Handler",
+  "nodes": [
+    {
+      "parameters": {"httpMethod": "POST", "path": "alerts-critical"},
+      "name": "Critical Alert Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#critical-alerts",
+        "text": ":rotating_light: **CRITICAL ALERT** :rotating_light:\\n\\n**Alert:** {{$json.alertname}}\\n**Description:** {{$json.description}}\\n**Time:** {{$json.timestamp}}\\n\\n@here"
+      },
+      "name": "Slack Critical",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [450, 200],
+      "credentials": {"slackApi": {"id": "2"}}
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendEmail",
+        "toEmail": "ops-team@company.com",
+        "subject": "[CRITICAL] {{$json.alertname}}",
+        "message": "Critical alert triggered at {{$json.timestamp}}\\n\\n{{$json.description}}"
+      },
+      "name": "Email Ops Team",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "critical_alerts",
+        "columns": "alert_name,description,timestamp,notified"
+      },
+      "name": "Log Alert",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [450, 400],
+      "credentials": {"postgres": {"id": "1"}}
+    },
+    {
+      "parameters": {
+        "url": "https://api.pagerduty.com/incidents",
+        "authentication": "headerAuth",
+        "requestMethod": "POST",
+        "jsonParameters": true,
+        "bodyParametersJson": "={{JSON.stringify({incident: {type: 'incident', title: $json.alertname, service: {id: 'PD_SERVICE_ID', type: 'service_reference'}, urgency: 'high', body: {type: 'incident_body', details: $json.description}}})}}"
+      },
+      "name": "Create PagerDuty Incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [650, 300]
+    }
+  ],
+  "connections": {
+    "Critical Alert Webhook": {"main": [[{"node": "Slack Critical"}, {"node": "Email Ops Team"}, {"node": "Log Alert"}]]},
+    "Log Alert": {"main": [[{"node": "Create PagerDuty Incident"}]]}
+  },
+  "active": true,
+  "settings": {"timezone": "Europe/Paris"},
+  "tags": ["P0", "alerts", "critical"]
+}

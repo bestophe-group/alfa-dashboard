@@ -1,0 +1,11 @@
+{
+  "name": "P2-52 User Onboarding Automation",
+  "nodes": [
+    {"parameters": {"httpMethod": "POST", "path": "onboarding"}, "name": "Trigger", "type": "n8n-nodes-base.webhook", "position": [250, 300]},
+    {"parameters": {"url": "https://graph.microsoft.com/v1.0/users", "requestMethod": "POST", "bodyParametersJson": "={{JSON.stringify({accountEnabled: true, displayName: $json.fullname, mailNickname: $json.email.split('@')[0], userPrincipalName: $json.email, passwordProfile: {forceChangePasswordNextSignIn: true, password: $json.temp_password}})}}"}, "name": "Create Azure AD User", "type": "n8n-nodes-base.httpRequest", "position": [450, 300]},
+    {"parameters": {"channel": "#hr", "text": ":wave: New user onboarded: {{$json.fullname}}"}, "name": "Notify", "type": "n8n-nodes-base.slack", "position": [650, 300]}
+  ],
+  "connections": {"Trigger": {"main": [[{"node": "Create Azure AD User"}]]}, "Create Azure AD User": {"main": [[{"node": "Notify"}]]}},
+  "active": true,
+  "tags": ["P2", "onboarding", "hr"]
+}

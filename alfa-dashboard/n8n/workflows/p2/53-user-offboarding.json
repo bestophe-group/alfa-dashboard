@@ -1,0 +1,13 @@
+{
+  "name": "P2-53 User Offboarding Automation",
+  "nodes": [
+    {"parameters": {"httpMethod": "POST", "path": "offboarding"}, "name": "Trigger", "type": "n8n-nodes-base.webhook", "position": [250, 300]},
+    {"parameters": {"url": "https://graph.microsoft.com/v1.0/users/{{$json.user_email}}", "requestMethod": "PATCH", "bodyParametersJson": "={{JSON.stringify({accountEnabled: false})}}"}, "name": "Disable Azure AD", "type": "n8n-nodes-base.httpRequest", "position": [450, 200]},
+    {"parameters": {"url": "https://graph.microsoft.com/v1.0/users/{{$json.user_email}}/revokeSignInSessions", "requestMethod": "POST"}, "name": "Revoke Sessions", "type": "n8n-nodes-base.httpRequest", "position": [450, 400]},
+    {"parameters": {"operation": "insert", "table": "offboarding_log", "columns": "user_email,disabled_at,reason"}, "name": "Log", "type": "n8n-nodes-base.postgres", "position": [650, 300]},
+    {"parameters": {"channel": "#hr", "text": ":wave: User offboarded: {{$json.user_email}}"}, "name": "Notify", "type": "n8n-nodes-base.slack", "position": [850, 300]}
+  ],
+  "connections": {"Trigger": {"main": [[{"node": "Disable Azure AD"}, {"node": "Revoke Sessions"}]]}, "Disable Azure AD": {"main": [[{"node": "Log"}]]}, "Revoke Sessions": {"main": [[{"node": "Log"}]]}, "Log": {"main": [[{"node": "Notify"}]]}},
+  "active": true,
+  "tags": ["P2", "offboarding", "security"]
+}

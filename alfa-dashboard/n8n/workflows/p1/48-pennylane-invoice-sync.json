@@ -1,0 +1,12 @@
+{
+  "name": "P1-48 PennyLane Invoice Sync",
+  "nodes": [
+    {"parameters": {"rule": {"interval": [{"field": "hours", "hoursInterval": 6}]}}, "name": "Every 6 Hours", "type": "n8n-nodes-base.scheduleTrigger", "position": [250, 300]},
+    {"parameters": {"url": "https://app.pennylane.com/api/external/v1/customer_invoices", "authentication": "genericCredentialType", "genericAuthType": "httpHeaderAuth", "sendQuery": true, "queryParameters": {"parameters": [{"name": "filter[status]", "value": "pending"}]}}, "name": "Fetch Invoices", "type": "n8n-nodes-base.httpRequest", "position": [450, 300]},
+    {"parameters": {"operation": "insert", "table": "invoices", "columns": "invoice_id,customer_name,amount,status,due_date,synced_at"}, "name": "Save to DB", "type": "n8n-nodes-base.postgres", "position": [650, 300]},
+    {"parameters": {"channel": "#finance", "text": "{{$json.count}} invoices synced from PennyLane"}, "name": "Notify", "type": "n8n-nodes-base.slack", "position": [850, 300]}
+  ],
+  "connections": {"Every 6 Hours": {"main": [[{"node": "Fetch Invoices"}]]}, "Fetch Invoices": {"main": [[{"node": "Save to DB"}]]}, "Save to DB": {"main": [[{"node": "Notify"}]]}},
+  "active": true,
+  "tags": ["P1", "pennylane", "finance"]
+}

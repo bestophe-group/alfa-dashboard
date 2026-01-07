@@ -1,0 +1,22 @@
+{
+  "name": "P1-50 Service Request Handler",
+  "nodes": [
+    {"parameters": {"httpMethod": "POST", "path": "service-request"}, "name": "Service Request Webhook", "type": "n8n-nodes-base.webhook", "position": [250, 300]},
+    {"parameters": {"operation": "executeQuery", "query": "SELECT * FROM service_catalog WHERE slug = '{{$json.service}}'"}, "name": "Get Service Info", "type": "n8n-nodes-base.postgres", "position": [450, 300]},
+    {"parameters": {"operation": "insert", "table": "service_requests", "columns": "requester_email,requester_name,service_slug,title,description,priority"}, "name": "Create Request", "type": "n8n-nodes-base.postgres", "position": [650, 300]},
+    {"parameters": {"conditions": {"boolean": [{"value1": "={{$json.auto_executable}}", "value2": true}]}}, "name": "Is Auto-Executable?", "type": "n8n-nodes-base.if", "position": [850, 300]},
+    {"parameters": {"url": "http://alfa-n8n:5678/webhook/{{$json.workflow_id}}", "requestMethod": "POST", "jsonParameters": true, "bodyParametersJson": "={{JSON.stringify($json)}}"}, "name": "Trigger Workflow", "type": "n8n-nodes-base.httpRequest", "position": [1050, 200]},
+    {"parameters": {"channel": "#service-desk", "text": ":ticket: New service request: {{$json.title}}\\n**Ticket:** {{$json.ticket_id}}\\n**Assigned for manual processing**"}, "name": "Notify Manual", "type": "n8n-nodes-base.slack", "position": [1050, 400]},
+    {"parameters": {"respondWith": "json", "responseBody": "={{JSON.stringify({ticket_id: $json.ticket_id, status: $json.auto_executable ? 'processing' : 'assigned'})}}"}, "name": "Respond", "type": "n8n-nodes-base.respondToWebhook", "position": [1250, 300]}
+  ],
+  "connections": {
+    "Service Request Webhook": {"main": [[{"node": "Get Service Info"}]]},
+    "Get Service Info": {"main": [[{"node": "Create Request"}]]},
+    "Create Request": {"main": [[{"node": "Is Auto-Executable?"}]]},
+    "Is Auto-Executable?": {"main": [[{"node": "Trigger Workflow"}], [{"node": "Notify Manual"}]]},
+    "Trigger Workflow": {"main": [[{"node": "Respond"}]]},
+    "Notify Manual": {"main": [[{"node": "Respond"}]]}
+  },
+  "active": true,
+  "tags": ["P1", "service-desk", "automation"]
+}
