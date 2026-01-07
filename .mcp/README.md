@@ -1,6 +1,6 @@
 # ALFA MCP Server - Complete Toolset
 
-> **59 outils d'expertise professionnelle** accessibles via MCP pour Claude Desktop, Claude Code CLI et Cursor
+> **91 outils d'expertise professionnelle** accessibles via MCP pour Claude Desktop, Claude Code CLI et Cursor
 
 ## 🚀 Quick Start
 
@@ -16,11 +16,9 @@ npm install
 Créer un fichier `.env` avec vos API keys :
 
 ```bash
-# Monitoring
+# Monitoring & Analytics
 GRAFANA_URL=http://localhost:3000
 GRAFANA_API_KEY=admin:admin
-
-# Analytics
 POWERBI_ACCESS_TOKEN=your_powerbi_token
 
 # OSINT
@@ -33,6 +31,43 @@ INTELX_API_KEY=your_intelx_key
 OPENAI_API_KEY=your_openai_key
 PERPLEXITY_API_KEY=your_perplexity_key
 ELEVENLABS_API_KEY=your_elevenlabs_key
+
+# Collaboration
+SLACK_BOT_TOKEN=your_slack_token
+MS_GRAPH_TOKEN=your_ms_token
+GOOGLE_SERVICE_ACCOUNT_KEY=your_google_key
+
+# Infrastructure
+OVH_APP_KEY=your_ovh_key
+OVH_APP_SECRET=your_ovh_secret
+OVH_CONSUMER_KEY=your_ovh_consumer
+AWS_ACCESS_KEY_ID=your_aws_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret
+VERCEL_TOKEN=your_vercel_token
+CLOUDFLARE_API_TOKEN=your_cloudflare_token
+
+# Business SaaS
+PAYFIT_API_KEY=your_payfit_key
+PENNYLANE_API_KEY=your_pennylane_key
+BITWARDEN_CLI_SESSION=your_bitwarden_session
+INSTAGRAM_ACCESS_TOKEN=your_instagram_token
+FACEBOOK_ACCESS_TOKEN=your_facebook_token
+TIKTOK_ACCESS_TOKEN=your_tiktok_token
+YOUTUBE_CLIENT_ID=your_youtube_id
+YOUTUBE_CLIENT_SECRET=your_youtube_secret
+CANVA_API_KEY=your_canva_key
+
+# CMS
+WIX_API_KEY=your_wix_key
+WP_APPLICATION_PASSWORD=your_wp_pass
+
+# Developer
+GITHUB_TOKEN=your_github_token
+
+# Azure SSO
+AZURE_TENANT_ID=your_tenant_id
+AZURE_CLIENT_ID=your_client_id
+AZURE_CLIENT_SECRET=your_client_secret
 ```
 
 ### Test du serveur
@@ -52,7 +87,7 @@ Consultez [TOOLS-CATALOG.md](./TOOLS-CATALOG.md) pour :
 - Variables d'environnement
 - Architecture technique
 
-## 🎯 7 Domaines d'Expertise
+## 🎯 14 Domaines d'Expertise
 
 ### 1. 📊 Grafana (5 outils)
 Gestion complète de Grafana : dashboards, queries, alerts
@@ -74,6 +109,27 @@ Orchestration IA : ChatGPT, Perplexity, Manus, ElevenLabs
 
 ### 7. 💻 Claude Code (9 outils)
 Développement : projets, tests, debugging, CI/CD
+
+### 8. 💬 Collaboration (12 outils)
+Slack, Microsoft 365, Google Workspace
+
+### 9. ☁️ Infrastructure (9 outils)
+OVH, Hostinger, AWS, Vercel, v0.dev, Cloudflare
+
+### 10. 💼 Business SaaS (11 outils)
+PayFit, PennyLane, Bitwarden, Social Media, Canva
+
+### 11. 🌐 CMS (9 outils)
+Wix, WordPress, WooCommerce
+
+### 12. 👨‍💻 Developer (8 outils)
+GitHub, Browser Automation
+
+### 13. 🔐 Azure SSO (7 outils)
+SAML, OIDC, Conditional Access
+
+### 14. 📝 Productivity (8 outils)
+Obsidian vault management
 
 ## 🔧 Utilisation dans Claude
 
@@ -188,10 +244,10 @@ Rechercher tendances FinTech 2026, synthétiser et créer rapport PowerPoint
 
 | Métrique | Valeur |
 |----------|--------|
-| **Outils totaux** | 59 |
-| **Domaines d'expertise** | 7 |
-| **Intégrations API** | 20+ |
-| **Lignes de code** | 3000+ |
+| **Outils totaux** | 91 |
+| **Domaines d'expertise** | 14 |
+| **Intégrations API** | 40+ |
+| **Lignes de code** | 5000+ |
 | **Cas d'usage** | ∞ |
 
 ## 🚦 Status & Health
@@ -230,6 +286,17 @@ https://github.com/bestophe-group/alfa-dashboard/issues
 
 ## 📝 Changelog
 
+### v2.0.0 (2026-01-07)
+
+- ✨ 91 outils MCP (32 nouveaux)
+- 💬 Collaboration: Slack, Microsoft 365, Google Workspace
+- ☁️ Infrastructure: OVH, AWS, Vercel, Cloudflare
+- 💼 Business SaaS: PayFit, PennyLane, Social Media
+- 🌐 CMS: Wix, WordPress, WooCommerce
+- 👨‍💻 Developer: GitHub, Browser Automation
+- 🔐 Azure SSO: SAML, OIDC, Conditional Access
+- 📝 Productivity: Obsidian vault management
+
 ### v1.0.0 (2026-01-07)
 
 - ✨ 59 outils MCP initiaux
@@ -243,6 +310,6 @@ https://github.com/bestophe-group/alfa-dashboard/issues
 
 ---
 
-🤖 **ALFA MCP Server v1.0.0**
+🤖 **ALFA MCP Server v2.0.0**
 
 Créé avec Claude Code dans le cadre de la méthode ALFA-Agent
