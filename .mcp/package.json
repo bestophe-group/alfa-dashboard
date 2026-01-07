@@ -1,0 +1,19 @@
+{
+  "name": "alfa-mcp-server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "MCP server for ALFA Dashboard stack",
+  "main": "alfa-server.js",
+  "bin": {
+    "alfa-mcp": "./alfa-server.js"
+  },
+  "scripts": {
+    "start": "node alfa-server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
