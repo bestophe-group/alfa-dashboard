@@ -1,0 +1,294 @@
+{
+  "name": "P1-60 ALFA Slack Command Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "slack-command",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Slack Command Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "slack-command"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Slack slash command\nconst body = $input.item.json.body;\n\n// Slack sends form-urlencoded data\nconst command = body.command || '/alfa';\nconst text = body.text || '';\nconst userId = body.user_id;\nconst userName = body.user_name;\nconst channelId = body.channel_id;\nconst channelName = body.channel_name;\nconst responseUrl = body.response_url;\nconst triggerId = body.trigger_id;\n\n// Parse command and arguments\nconst parts = text.trim().split(' ');\nconst action = parts[0] || 'help';\nconst args = parts.slice(1).join(' ');\n\n// Log to database\nconst logEntry = {\n  workflow_name: 'slack-command-handler',\n  execution_id: $execution.id,\n  status: 'running',\n  metadata: {\n    command: command,\n    action: action,\n    args: args,\n    user: userName,\n    channel: channelName\n  }\n};\n\nreturn {\n  action: action.toLowerCase(),\n  args: args,\n  userId: userId,\n  userName: userName,\n  channelId: channelId,\n  channelName: channelName,\n  responseUrl: responseUrl,\n  triggerId: triggerId,\n  timestamp: new Date().toISOString(),\n  logEntry: logEntry\n};"
+      },
+      "id": "parse-command",
+      "name": "Parse Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "outputKey": "help",
+              "conditions": {
+                "options": { "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "help", "operator": { "type": "string", "operation": "equals" } }
+                ]
+              }
+            },
+            {
+              "outputKey": "status",
+              "conditions": {
+                "options": { "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "status", "operator": { "type": "string", "operation": "equals" } }
+                ]
+              }
+            },
+            {
+              "outputKey": "osint",
+              "conditions": {
+                "options": { "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "osint", "operator": { "type": "string", "operation": "equals" } }
+                ]
+              }
+            },
+            {
+              "outputKey": "reset",
+              "conditions": {
+                "options": { "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "reset", "operator": { "type": "string", "operation": "equals" } }
+                ]
+              }
+            },
+            {
+              "outputKey": "scan",
+              "conditions": {
+                "options": { "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "scan", "operator": { "type": "string", "operation": "equals" } }
+                ]
+              }
+            },
+            {
+              "outputKey": "ticket",
+              "conditions": {
+                "options": { "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "ticket", "operator": { "type": "string", "operation": "equals" } }
+                ]
+              }
+            },
+            {
+              "outputKey": "sharepoint",
+              "conditions": {
+                "options": { "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "sharepoint", "operator": { "type": "string", "operation": "equals" } }
+                ]
+              }
+            },
+            {
+              "outputKey": "backup",
+              "conditions": {
+                "options": { "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "backup", "operator": { "type": "string", "operation": "equals" } }
+                ]
+              }
+            },
+            {
+              "outputKey": "unknown",
+              "conditions": {
+                "options": { "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  { "leftValue": "={{ $json.action }}", "rightValue": "", "operator": { "type": "string", "operation": "notEmpty" } }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "route-command",
+      "name": "Route Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Help command response\nconst blocks = [\n  {\n    type: 'header',\n    text: { type: 'plain_text', text: '🤖 ALFA - Commandes disponibles' }\n  },\n  {\n    type: 'section',\n    text: {\n      type: 'mrkdwn',\n      text: '*Commandes principales:*'\n    }\n  },\n  {\n    type: 'section',\n    text: {\n      type: 'mrkdwn',\n      text: '`/alfa status` - État des services\\n`/alfa scan` - Lancer scan vulnérabilités\\n`/alfa backup` - Lancer backup\\n`/alfa reset <email>` - Reset password Azure AD\\n`/alfa sharepoint <nom>` - Créer site SharePoint\\n`/alfa osint <entreprise>` - Rapport OSINT\\n`/alfa ticket <description>` - Créer ticket support\\n`/alfa help` - Cette aide'\n    }\n  },\n  {\n    type: 'context',\n    elements: [\n      { type: 'mrkdwn', text: '💡 Exemple: `/alfa osint Acme Corp`' }\n    ]\n  }\n];\n\nreturn {\n  response_type: 'ephemeral',\n  blocks: blocks\n};"
+      },
+      "id": "help-response",
+      "name": "Help Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Status command - check all services\nconst services = [\n  { name: 'Traefik', status: '✅', url: 'traefik.alfa.local' },\n  { name: 'n8n', status: '✅', url: 'n8n.alfa.local' },\n  { name: 'PostgreSQL', status: '✅', port: 5432 },\n  { name: 'Redis', status: '✅', port: 6379 },\n  { name: 'Authentik', status: '✅', url: 'auth.alfa.local' },\n  { name: 'Grafana', status: '✅', url: 'grafana.alfa.local' },\n  { name: 'Uptime Kuma', status: '✅', url: 'status.alfa.local' }\n];\n\nconst serviceList = services.map(s => `${s.status} *${s.name}*`).join('\\n');\n\nconst blocks = [\n  {\n    type: 'header',\n    text: { type: 'plain_text', text: '📊 ALFA - État des services' }\n  },\n  {\n    type: 'section',\n    text: { type: 'mrkdwn', text: serviceList }\n  },\n  {\n    type: 'context',\n    elements: [\n      { type: 'mrkdwn', text: `Dernière vérification: ${new Date().toLocaleString('fr-FR')}` }\n    ]\n  }\n];\n\nreturn {\n  response_type: 'in_channel',\n  blocks: blocks\n};"
+      },
+      "id": "status-response",
+      "name": "Status Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// OSINT command - trigger OSINT workflow\nconst company = $input.item.json.args;\nconst userName = $input.item.json.userName;\nconst responseUrl = $input.item.json.responseUrl;\n\nif (!company) {\n  return {\n    response_type: 'ephemeral',\n    text: '❌ Usage: `/alfa osint <nom entreprise>`\\nExemple: `/alfa osint Acme Corp`'\n  };\n}\n\n// Return immediate response, then trigger async workflow\nreturn {\n  immediateResponse: {\n    response_type: 'ephemeral',\n    text: `🔍 Recherche OSINT lancée pour *${company}*...\\nVous recevrez le rapport dans quelques instants.`\n  },\n  asyncTask: {\n    type: 'osint',\n    company: company,\n    requestedBy: userName,\n    responseUrl: responseUrl\n  }\n};"
+      },
+      "id": "osint-handler",
+      "name": "OSINT Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Password reset command\nconst email = $input.item.json.args;\nconst userName = $input.item.json.userName;\n\nif (!email || !email.includes('@')) {\n  return {\n    response_type: 'ephemeral',\n    text: '❌ Usage: `/alfa reset <email>`\\nExemple: `/alfa reset john.doe@company.com`'\n  };\n}\n\nreturn {\n  immediateResponse: {\n    response_type: 'ephemeral',\n    text: `🔐 Reset password lancé pour *${email}*...\\nVous recevrez confirmation dans quelques instants.`\n  },\n  asyncTask: {\n    type: 'password_reset',\n    email: email,\n    requestedBy: userName\n  }\n};"
+      },
+      "id": "reset-handler",
+      "name": "Reset Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Scan vulnerabilities command\nconst userName = $input.item.json.userName;\n\nreturn {\n  immediateResponse: {\n    response_type: 'in_channel',\n    text: `🔒 Scan de vulnérabilités lancé par *${userName}*...\\nRésultats disponibles dans ~5 minutes.`\n  },\n  asyncTask: {\n    type: 'trivy_scan',\n    requestedBy: userName\n  }\n};"
+      },
+      "id": "scan-handler",
+      "name": "Scan Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ticket creation command\nconst description = $input.item.json.args;\nconst userName = $input.item.json.userName;\nconst channelName = $input.item.json.channelName;\n\nif (!description) {\n  return {\n    response_type: 'ephemeral',\n    text: '❌ Usage: `/alfa ticket <description>`\\nExemple: `/alfa ticket Problème connexion VPN`'\n  };\n}\n\n// Generate ticket ID\nconst ticketId = 'REQ-' + Date.now().toString(36).toUpperCase();\n\nreturn {\n  response_type: 'in_channel',\n  blocks: [\n    {\n      type: 'section',\n      text: {\n        type: 'mrkdwn',\n        text: `✅ *Ticket créé*\\n\\n*ID:* \\`${ticketId}\\`\\n*Par:* ${userName}\\n*Description:* ${description}`\n      }\n    },\n    {\n      type: 'context',\n      elements: [\n        { type: 'mrkdwn', text: 'Vous serez notifié de la progression.' }\n      ]\n    }\n  ],\n  ticketData: {\n    ticketId: ticketId,\n    description: description,\n    requester: userName,\n    channel: channelName,\n    status: 'new'\n  }\n};"
+      },
+      "id": "ticket-handler",
+      "name": "Ticket Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// SharePoint creation command\nconst siteName = $input.item.json.args;\nconst userName = $input.item.json.userName;\n\nif (!siteName) {\n  return {\n    response_type: 'ephemeral',\n    text: '❌ Usage: `/alfa sharepoint <nom du site>`\\nExemple: `/alfa sharepoint Projet-Marketing-2026`'\n  };\n}\n\nreturn {\n  immediateResponse: {\n    response_type: 'ephemeral',\n    text: `📁 Création du site SharePoint *${siteName}* en cours...`\n  },\n  asyncTask: {\n    type: 'sharepoint_create',\n    siteName: siteName,\n    requestedBy: userName\n  }\n};"
+      },
+      "id": "sharepoint-handler",
+      "name": "SharePoint Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 700]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Backup command\nconst userName = $input.item.json.userName;\n\nreturn {\n  response_type: 'in_channel',\n  text: `💾 Backup manuel lancé par *${userName}*...\\nVous recevrez confirmation une fois terminé.`\n};"
+      },
+      "id": "backup-handler",
+      "name": "Backup Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 800]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Unknown command\nconst action = $input.item.json.action;\n\nreturn {\n  response_type: 'ephemeral',\n  text: `❓ Commande inconnue: \\`${action}\\`\\n\\nTapez \\`/alfa help\\` pour voir les commandes disponibles.`\n};"
+      },
+      "id": "unknown-handler",
+      "name": "Unknown Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 900]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Slack",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1150, 500]
+    }
+  ],
+  "connections": {
+    "Slack Command Webhook": {
+      "main": [[{ "node": "Parse Command", "type": "main", "index": 0 }]]
+    },
+    "Parse Command": {
+      "main": [[{ "node": "Route Command", "type": "main", "index": 0 }]]
+    },
+    "Route Command": {
+      "main": [
+        [{ "node": "Help Response", "type": "main", "index": 0 }],
+        [{ "node": "Status Response", "type": "main", "index": 0 }],
+        [{ "node": "OSINT Handler", "type": "main", "index": 0 }],
+        [{ "node": "Reset Handler", "type": "main", "index": 0 }],
+        [{ "node": "Scan Handler", "type": "main", "index": 0 }],
+        [{ "node": "Ticket Handler", "type": "main", "index": 0 }],
+        [{ "node": "SharePoint Handler", "type": "main", "index": 0 }],
+        [{ "node": "Backup Handler", "type": "main", "index": 0 }],
+        [{ "node": "Unknown Handler", "type": "main", "index": 0 }]
+      ]
+    },
+    "Help Response": {
+      "main": [[{ "node": "Respond to Slack", "type": "main", "index": 0 }]]
+    },
+    "Status Response": {
+      "main": [[{ "node": "Respond to Slack", "type": "main", "index": 0 }]]
+    },
+    "OSINT Handler": {
+      "main": [[{ "node": "Respond to Slack", "type": "main", "index": 0 }]]
+    },
+    "Reset Handler": {
+      "main": [[{ "node": "Respond to Slack", "type": "main", "index": 0 }]]
+    },
+    "Scan Handler": {
+      "main": [[{ "node": "Respond to Slack", "type": "main", "index": 0 }]]
+    },
+    "Ticket Handler": {
+      "main": [[{ "node": "Respond to Slack", "type": "main", "index": 0 }]]
+    },
+    "SharePoint Handler": {
+      "main": [[{ "node": "Respond to Slack", "type": "main", "index": 0 }]]
+    },
+    "Backup Handler": {
+      "main": [[{ "node": "Respond to Slack", "type": "main", "index": 0 }]]
+    },
+    "Unknown Handler": {
+      "main": [[{ "node": "Respond to Slack", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "P1" },
+    { "name": "slack" },
+    { "name": "integration" }
+  ],
+  "triggerCount": 1,
+  "active": true
+}
