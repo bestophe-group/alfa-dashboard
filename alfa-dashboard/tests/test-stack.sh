@@ -87,8 +87,7 @@ test_case "Redis volume defined" "docker compose -f $PROJECT_DIR/docker-compose.
 test_case "n8n volume defined" "docker compose -f $PROJECT_DIR/docker-compose.yml config | grep -q 'alfa-n8n-data'"
 
 # Test 7: Required networks defined
-test_case "Frontend network defined" "docker compose -f $PROJECT_DIR/docker-compose.yml config | grep -q 'alfa-frontend'"
-test_case "Backend network defined" "docker compose -f $PROJECT_DIR/docker-compose.yml config | grep -q 'alfa-backend'"
+test_case "ALFA network defined" "docker compose -f $PROJECT_DIR/docker-compose.yml config | grep -q 'alfa-network'"
 
 # Test 8: Services have healthchecks
 test_case "PostgreSQL healthcheck" "grep -A20 'container_name: alfa-postgres' $PROJECT_DIR/docker-compose.yml | grep -q 'healthcheck'"
@@ -96,7 +95,6 @@ test_case "Redis healthcheck" "grep -A20 'container_name: alfa-redis' $PROJECT_D
 test_case "n8n healthcheck" "grep -A50 'container_name: alfa-n8n' $PROJECT_DIR/docker-compose.yml | grep -q 'healthcheck'"
 test_case "Traefik healthcheck" "grep -A30 'container_name: alfa-traefik' $PROJECT_DIR/docker-compose.yml | grep -q 'healthcheck'"
 test_case "Uptime Kuma healthcheck" "grep -A30 'container_name: alfa-uptime-kuma' $PROJECT_DIR/docker-compose.yml | grep -q 'healthcheck'"
-test_case "Infisical healthcheck" "grep -A30 'container_name: alfa-infisical' $PROJECT_DIR/docker-compose.yml | grep -q 'healthcheck'"
 
 echo ""
 echo -e "${YELLOW}=== Runtime Tests (requires running stack) ===${NC}"
