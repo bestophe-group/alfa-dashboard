@@ -1,0 +1,180 @@
+{
+  "name": "P3-38 Quote of the Day",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Weekdays 9AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.quotable.io/random",
+        "options": {
+          "timeout": 10000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "tags",
+              "value": "technology|business|success|wisdom"
+            }
+          ]
+        }
+      },
+      "id": "fetch-quote",
+      "name": "Fetch Quote",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nif (!data.content) {\n  // Fallback quotes if API fails\n  const fallbacks = [\n    { content: 'The best way to predict the future is to create it.', author: 'Peter Drucker' },\n    { content: 'Innovation distinguishes between a leader and a follower.', author: 'Steve Jobs' },\n    { content: 'Simplicity is the ultimate sophistication.', author: 'Leonardo da Vinci' },\n    { content: 'Talk is cheap. Show me the code.', author: 'Linus Torvalds' },\n    { content: 'First, solve the problem. Then, write the code.', author: 'John Johnson' }\n  ];\n  const random = fallbacks[Math.floor(Math.random() * fallbacks.length)];\n  return {\n    quote: random.content,\n    author: random.author,\n    source: 'fallback',\n    posted_at: new Date().toISOString()\n  };\n}\n\nreturn {\n  quote: data.content,\n  author: data.author,\n  tags: data.tags || [],\n  source: 'quotable.io',\n  posted_at: new Date().toISOString()\n};"
+      },
+      "id": "process-quote",
+      "name": "Process Quote",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "daily_quotes",
+        "columns": "quote,author,posted_at"
+      },
+      "id": "save-quote",
+      "name": "Save Quote",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [910, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#general",
+        "text": "💬 Quote of the Day",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "💬 *Quote of the Day*"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "> _{{ $json.quote }}_"
+              }
+            },
+            {
+              "type": "context",
+              "elements": [
+                {
+                  "type": "mrkdwn",
+                  "text": "— {{ $json.author }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-quote",
+      "name": "Slack Quote",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1130, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Weekdays 9AM": {
+      "main": [
+        [
+          {
+            "node": "Fetch Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Quote": {
+      "main": [
+        [
+          {
+            "node": "Process Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Quote": {
+      "main": [
+        [
+          {
+            "node": "Save Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Quote": {
+      "main": [
+        [
+          {
+            "node": "Slack Quote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P3-Low"
+    },
+    {
+      "name": "Culture"
+    },
+    {
+      "name": "Motivation"
+    }
+  ]
+}

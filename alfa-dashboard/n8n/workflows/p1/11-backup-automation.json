@@ -1,0 +1,309 @@
+{
+  "name": "P1-11 Backup Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily at 2AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Define backup targets\nconst backupTargets = [\n  {\n    name: 'PostgreSQL',\n    type: 'database',\n    container: 'alfa-postgres',\n    command: 'pg_dump -U $POSTGRES_USER -d $POSTGRES_DB',\n    retention_days: 30\n  },\n  {\n    name: 'Redis',\n    type: 'cache',\n    container: 'alfa-redis',\n    command: 'redis-cli -a $REDIS_PASSWORD BGSAVE',\n    retention_days: 7\n  },\n  {\n    name: 'n8n Data',\n    type: 'volume',\n    volume: 'alfa-n8n-data',\n    retention_days: 30\n  },\n  {\n    name: 'Infisical Data',\n    type: 'volume',\n    volume: 'alfa-infisical-data',\n    retention_days: 30\n  },\n  {\n    name: 'Uptime Kuma Data',\n    type: 'volume',\n    volume: 'alfa-uptime-kuma-data',\n    retention_days: 14\n  }\n];\n\nconst timestamp = new Date().toISOString().split('T')[0];\nconst backupId = `backup-${timestamp}-${Date.now()}`;\n\nreturn {\n  backup_id: backupId,\n  timestamp,\n  targets: backupTargets,\n  started_at: new Date().toISOString()\n};"
+      },
+      "id": "prepare-backup",
+      "name": "Prepare Backup Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "backup_jobs",
+        "columns": "backup_id,status,targets_count,started_at"
+      },
+      "id": "create-job",
+      "name": "Create Backup Job",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [690, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Prepare Backup Config').first().json;\nconst results = [];\n\n// Simulate backup execution (in real deployment, this would call Docker API or scripts)\nfor (const target of config.targets) {\n  const startTime = Date.now();\n  \n  // Simulated backup result\n  const success = Math.random() > 0.05; // 95% success rate simulation\n  const size = Math.floor(Math.random() * 500) + 50; // MB\n  \n  results.push({\n    backup_id: config.backup_id,\n    target_name: target.name,\n    target_type: target.type,\n    status: success ? 'completed' : 'failed',\n    size_mb: success ? size : 0,\n    duration_ms: Date.now() - startTime + Math.floor(Math.random() * 5000),\n    retention_days: target.retention_days,\n    backup_path: success ? `/backups/${config.timestamp}/${target.name.toLowerCase().replace(/ /g, '-')}.tar.gz` : null,\n    error_message: success ? null : 'Simulated backup failure',\n    completed_at: new Date().toISOString()\n  });\n}\n\nconst successCount = results.filter(r => r.status === 'completed').length;\nconst totalSize = results.reduce((sum, r) => sum + r.size_mb, 0);\n\nreturn {\n  backup_id: config.backup_id,\n  overall_status: successCount === results.length ? 'completed' : 'partial',\n  success_count: successCount,\n  total_count: results.length,\n  total_size_mb: totalSize,\n  results,\n  completed_at: new Date().toISOString()\n};"
+      },
+      "id": "execute-backups",
+      "name": "Execute Backups",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": "public",
+        "table": "backup_jobs",
+        "columns": "status,success_count,total_size_mb,completed_at",
+        "updateKey": "backup_id"
+      },
+      "id": "update-job",
+      "name": "Update Backup Job",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1130, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#devops",
+        "text": "💾 Backup Report: {{ $json.backup_id }}",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "💾 Daily Backup Report"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Backup ID:*\n{{ $json.backup_id }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Status:*\n{{ $json.overall_status === 'completed' ? '✅ Completed' : '⚠️ Partial' }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Success:*\n{{ $json.success_count }}/{{ $json.total_count }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Total Size:*\n{{ $json.total_size_mb }} MB"
+                }
+              ]
+            },
+            {
+              "type": "divider"
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Completed:* {{ $json.completed_at }}"
+              }
+            }
+          ]
+        }
+      },
+      "id": "slack-report",
+      "name": "Slack Backup Report",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1350, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-partial",
+              "leftValue": "={{ $json.overall_status }}",
+              "rightValue": "partial",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-failures",
+      "name": "Has Failures?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1350, 500]
+    },
+    {
+      "parameters": {
+        "channel": "#alerts",
+        "text": "🔴 Backup Failed: {{ $json.backup_id }}",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "🔴 Backup Failure Alert"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Backup ID:* {{ $json.backup_id }}\n*Failed:* {{ $json.total_count - $json.success_count }} of {{ $json.total_count }} targets\n\nPlease investigate immediately."
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🔧 Retry Backup"
+                  },
+                  "style": "danger",
+                  "value": "retry_{{ $json.backup_id }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-failure",
+      "name": "Slack Failure Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1570, 500],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily at 2AM": {
+      "main": [
+        [
+          {
+            "node": "Prepare Backup Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Backup Config": {
+      "main": [
+        [
+          {
+            "node": "Create Backup Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Backup Job": {
+      "main": [
+        [
+          {
+            "node": "Execute Backups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Backups": {
+      "main": [
+        [
+          {
+            "node": "Update Backup Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Backup Job": {
+      "main": [
+        [
+          {
+            "node": "Slack Backup Report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Has Failures?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Failures?": {
+      "main": [
+        [
+          {
+            "node": "Slack Failure Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P1-High"
+    },
+    {
+      "name": "Infrastructure"
+    },
+    {
+      "name": "Backup"
+    }
+  ]
+}

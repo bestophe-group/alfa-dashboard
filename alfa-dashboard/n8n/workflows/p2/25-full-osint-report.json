@@ -1,0 +1,282 @@
+{
+  "name": "P2-25 Full OSINT Report Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osint/full-report",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Full Report Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $input.first().json;\n\nconst reportId = `REPORT-${Date.now()}`;\n\nreturn {\n  report_id: reportId,\n  company_name: request.company_name,\n  siret: request.siret || null,\n  domain: request.domain || null,\n  include_directors: request.include_directors !== false,\n  include_dns: request.include_dns !== false,\n  include_social: request.include_social !== false,\n  include_reputation: request.include_reputation !== false,\n  include_investors: request.include_investors !== false,\n  requested_by: request.requested_by || 'api',\n  started_at: new Date().toISOString()\n};"
+      },
+      "id": "prepare-report",
+      "name": "Prepare Report Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/webhook/osint/company",
+        "options": {
+          "timeout": 60000
+        },
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "company_name",
+              "value": "={{ $json.company_name }}"
+            },
+            {
+              "name": "siret",
+              "value": "={{ $json.siret }}"
+            }
+          ]
+        }
+      },
+      "id": "call-company",
+      "name": "Get Company Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 100],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/webhook/osint/dns",
+        "options": {
+          "timeout": 60000
+        },
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "domain",
+              "value": "={{ $('Prepare Report Config').item.json.domain }}"
+            }
+          ]
+        }
+      },
+      "id": "call-dns",
+      "name": "Get DNS Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 250],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/webhook/osint/social",
+        "options": {
+          "timeout": 60000
+        },
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "company_name",
+              "value": "={{ $('Prepare Report Config').item.json.company_name }}"
+            }
+          ]
+        }
+      },
+      "id": "call-social",
+      "name": "Get Social Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 400],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/webhook/osint/investors",
+        "options": {
+          "timeout": 60000
+        },
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "company_name",
+              "value": "={{ $('Prepare Report Config').item.json.company_name }}"
+            }
+          ]
+        }
+      },
+      "id": "call-investors",
+      "name": "Get Investor Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 550],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Prepare Report Config').first().json;\nconst companyData = $('Get Company Data').first()?.json || {};\nconst dnsData = $('Get DNS Data').first()?.json || {};\nconst socialData = $('Get Social Data').first()?.json || {};\nconst investorData = $('Get Investor Data').first()?.json || {};\n\nconst fullReport = {\n  report_id: config.report_id,\n  generated_at: new Date().toISOString(),\n  \n  // Company Overview\n  company: {\n    name: config.company_name,\n    legal_name: companyData.legal_name,\n    siret: companyData.siret,\n    siren: companyData.siren,\n    legal_form: companyData.legal_form,\n    capital: companyData.capital,\n    creation_date: companyData.creation_date,\n    address: companyData.address,\n    city: companyData.city,\n    naf_code: companyData.naf_code,\n    naf_label: companyData.naf_label\n  },\n  \n  // Directors\n  directors: companyData.directors || [],\n  directors_count: (companyData.directors || []).length,\n  \n  // Financial\n  financials: {\n    revenue: companyData.revenue,\n    employees: companyData.employees,\n    capital: companyData.capital\n  },\n  \n  // Shareholders & Investors\n  investors: {\n    shareholders: investorData.shareholders || [],\n    shareholders_count: investorData.shareholders_count || 0,\n    funding_news: investorData.funding_news || []\n  },\n  \n  // Digital Presence\n  digital: {\n    domain: config.domain,\n    ip_addresses: dnsData.ip_addresses || [],\n    mail_servers: dnsData.mail_servers || [],\n    email_security: dnsData.security || {},\n    social_profiles: {\n      linkedin: socialData.linkedin_url,\n      twitter: socialData.twitter_url,\n      youtube: socialData.youtube_url,\n      github: socialData.github_url\n    },\n    social_presence_score: socialData.social_presence_score || 0\n  },\n  \n  // Risk Assessment\n  risk_assessment: {\n    email_security_score: dnsData.security?.email_security_score || 0,\n    social_visibility: socialData.social_presence_score || 0,\n    data_completeness: calculateCompleteness(companyData, dnsData, socialData, investorData)\n  },\n  \n  // Metadata\n  data_sources: ['Pappers', 'Google', 'DNS', 'WHOIS', 'Social Media'],\n  requested_by: config.requested_by\n};\n\nfunction calculateCompleteness(company, dns, social, investors) {\n  let score = 0;\n  if (company.legal_name) score += 20;\n  if (company.siret) score += 15;\n  if (company.directors?.length > 0) score += 15;\n  if (dns.ip_addresses?.length > 0) score += 15;\n  if (social.linkedin_url) score += 15;\n  if (investors.shareholders?.length > 0) score += 20;\n  return score;\n}\n\nreturn fullReport;"
+      },
+      "id": "compile-report",
+      "name": "Compile Full Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "osint_reports",
+        "columns": "report_id,company_name,directors_count,shareholders_count,social_presence_score,data_completeness,report_data,generated_at"
+      },
+      "id": "save-report",
+      "name": "Save Full Report",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1130, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Return Full Report",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1350, 300]
+    }
+  ],
+  "connections": {
+    "Full Report Request": {
+      "main": [
+        [
+          {
+            "node": "Prepare Report Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Report Config": {
+      "main": [
+        [
+          {
+            "node": "Get Company Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get DNS Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Social Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Investor Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Company Data": {
+      "main": [
+        [
+          {
+            "node": "Compile Full Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get DNS Data": {
+      "main": [
+        [
+          {
+            "node": "Compile Full Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Social Data": {
+      "main": [
+        [
+          {
+            "node": "Compile Full Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Investor Data": {
+      "main": [
+        [
+          {
+            "node": "Compile Full Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Full Report": {
+      "main": [
+        [
+          {
+            "node": "Save Full Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Full Report": {
+      "main": [
+        [
+          {
+            "node": "Return Full Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "OSINT"
+    },
+    {
+      "name": "Report"
+    }
+  ]
+}

@@ -1,0 +1,227 @@
+{
+  "name": "P1-08 PayFit Export RH",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Weekly Monday 8AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.payfit.com/v1/employees",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.PAYFIT_API_KEY }}"
+            },
+            {
+              "name": "X-Company-ID",
+              "value": "={{ $env.PAYFIT_COMPANY_ID }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-employees",
+      "name": "Fetch PayFit Employees",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "employees",
+        "options": {}
+      },
+      "id": "split-employees",
+      "name": "Split Employees",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const emp = $input.first().json;\n\nreturn {\n  employee_id: emp.id,\n  first_name: emp.first_name,\n  last_name: emp.last_name,\n  email: emp.email,\n  job_title: emp.job_title || 'N/A',\n  department: emp.department || 'N/A',\n  start_date: emp.start_date,\n  contract_type: emp.contract_type || 'CDI',\n  is_active: emp.status === 'active',\n  manager_id: emp.manager_id,\n  remaining_pto_days: emp.remaining_pto_days || 0,\n  salary_gross: emp.salary?.gross || 0,\n  work_schedule: emp.work_schedule || '35h',\n  updated_at: new Date().toISOString()\n};"
+      },
+      "id": "transform-employee",
+      "name": "Transform Employee",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": "public",
+        "table": "employees",
+        "columns": "employee_id,first_name,last_name,email,job_title,department,start_date,contract_type,is_active,manager_id,remaining_pto_days,work_schedule,updated_at",
+        "conflictColumns": "employee_id"
+      },
+      "id": "save-to-db",
+      "name": "Save to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1130, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": "public",
+        "table": "employees",
+        "returnAll": true,
+        "where": {
+          "values": [
+            {
+              "column": "is_active",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-summary",
+      "name": "Get Active Count",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1350, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#hr-updates",
+        "text": "📊 Weekly HR Sync Complete",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "📊 *Weekly PayFit Sync Complete*\n\n*Active Employees:* {{ $json.length }}\n*Last Updated:* {{ $now.format('yyyy-MM-dd HH:mm') }}"
+              }
+            }
+          ]
+        }
+      },
+      "id": "slack-summary",
+      "name": "Slack Summary",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1570, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Weekly Monday 8AM": {
+      "main": [
+        [
+          {
+            "node": "Fetch PayFit Employees",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch PayFit Employees": {
+      "main": [
+        [
+          {
+            "node": "Split Employees",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Employees": {
+      "main": [
+        [
+          {
+            "node": "Transform Employee",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Employee": {
+      "main": [
+        [
+          {
+            "node": "Save to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Get Active Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Count": {
+      "main": [
+        [
+          {
+            "node": "Slack Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P1-High"
+    },
+    {
+      "name": "HR"
+    }
+  ]
+}

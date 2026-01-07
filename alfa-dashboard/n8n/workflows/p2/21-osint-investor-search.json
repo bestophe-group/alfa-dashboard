@@ -1,0 +1,220 @@
+{
+  "name": "P2-21 OSINT Investor Search",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osint/investors",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Investor Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $input.first().json;\n\nconst companyName = request.company_name;\nconst domain = request.domain || null;\n\n// Generate research ID\nconst researchId = `INV-${Date.now()}`;\n\nreturn {\n  research_id: researchId,\n  company_name: companyName,\n  domain,\n  requested_by: request.requested_by || 'api',\n  started_at: new Date().toISOString()\n};"
+      },
+      "id": "prepare-search",
+      "name": "Prepare Investor Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/customsearch/v1",
+        "options": {
+          "timeout": 15000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.company_name }} levée de fonds OR funding OR investment OR investisseur site:crunchbase.com OR site:dealroom.co"
+            },
+            {
+              "name": "key",
+              "value": "={{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "cx",
+              "value": "={{ $env.GOOGLE_CSE_ID }}"
+            },
+            {
+              "name": "num",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "id": "search-funding",
+      "name": "Search Funding News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.pappers.fr/v2/entreprise",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Prepare Investor Search').item.json.company_name }}"
+            }
+          ]
+        }
+      },
+      "id": "search-pappers",
+      "name": "Search Pappers Shareholders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 400],
+      "continueOnFail": true,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "pappers-credentials",
+          "name": "Pappers API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const search = $('Prepare Investor Search').first().json;\nconst fundingResults = $('Search Funding News').first()?.json?.items || [];\nconst pappersData = $('Search Pappers Shareholders').first()?.json || {};\n\n// Extract funding information from search results\nconst fundingInfo = fundingResults.map(result => {\n  const text = `${result.title} ${result.snippet}`.toLowerCase();\n  \n  // Try to extract amount\n  const amountMatch = text.match(/(\\d+(?:[,.]\\d+)?\\s*(m|million|k|thousand|€|\\$|eur|usd))/i);\n  \n  return {\n    title: result.title,\n    url: result.link,\n    snippet: result.snippet,\n    source: new URL(result.link).hostname,\n    extracted_amount: amountMatch ? amountMatch[0] : null\n  };\n});\n\n// Extract shareholders from Pappers\nconst shareholders = [];\nif (pappersData.beneficiaires_effectifs) {\n  for (const beneficiary of pappersData.beneficiaires_effectifs) {\n    shareholders.push({\n      name: `${beneficiary.prenom || ''} ${beneficiary.nom || ''}`.trim() || beneficiary.denomination,\n      type: beneficiary.type_personne || 'unknown',\n      ownership_percentage: beneficiary.pourcentage_parts,\n      voting_rights: beneficiary.pourcentage_votes\n    });\n  }\n}\n\n// Extract from actionnaires if available\nif (pappersData.actionnaires) {\n  for (const shareholder of pappersData.actionnaires) {\n    shareholders.push({\n      name: shareholder.nom || shareholder.denomination,\n      type: shareholder.personne_morale ? 'company' : 'individual',\n      ownership_percentage: shareholder.pourcentage,\n      siren: shareholder.siren || null\n    });\n  }\n}\n\n// Deduplicate shareholders\nconst uniqueShareholders = shareholders.reduce((acc, curr) => {\n  if (!acc.find(s => s.name === curr.name)) {\n    acc.push(curr);\n  }\n  return acc;\n}, []);\n\nconst profile = {\n  research_id: search.research_id,\n  company_name: search.company_name,\n  \n  // Shareholders\n  shareholders: uniqueShareholders,\n  shareholders_count: uniqueShareholders.length,\n  \n  // Funding news\n  funding_news: fundingInfo,\n  funding_mentions: fundingInfo.length,\n  \n  // Capital info from Pappers\n  capital: pappersData.capital || null,\n  capital_type: pappersData.type_capital || null,\n  \n  // Metadata\n  data_sources: ['Pappers', 'Google'],\n  compiled_at: new Date().toISOString()\n};\n\nreturn profile;"
+      },
+      "id": "compile-investors",
+      "name": "Compile Investor Profile",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "osint_investors",
+        "columns": "research_id,company_name,shareholders_count,funding_mentions,capital,profile_data,compiled_at"
+      },
+      "id": "save-investors",
+      "name": "Save Investor Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1130, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Return Investor Profile",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1350, 300]
+    }
+  ],
+  "connections": {
+    "Investor Request": {
+      "main": [
+        [
+          {
+            "node": "Prepare Investor Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Investor Search": {
+      "main": [
+        [
+          {
+            "node": "Search Funding News",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Search Pappers Shareholders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Funding News": {
+      "main": [
+        [
+          {
+            "node": "Compile Investor Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Pappers Shareholders": {
+      "main": [
+        [
+          {
+            "node": "Compile Investor Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Investor Profile": {
+      "main": [
+        [
+          {
+            "node": "Save Investor Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Investor Profile": {
+      "main": [
+        [
+          {
+            "node": "Return Investor Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "OSINT"
+    },
+    {
+      "name": "Investors"
+    }
+  ]
+}

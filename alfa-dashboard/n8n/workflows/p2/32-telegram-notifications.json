@@ -1,0 +1,137 @@
+{
+  "name": "P2-32 Telegram Notifications Gateway",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telegram/send",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Notification Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $input.first().json;\n\nconst notification = {\n  message_id: `MSG-${Date.now()}`,\n  chat_id: request.chat_id || process.env.TELEGRAM_DEFAULT_CHAT,\n  type: request.type || 'info',\n  title: request.title || 'Notification',\n  message: request.message,\n  priority: request.priority || 'normal',\n  source: request.source || 'api',\n  created_at: new Date().toISOString()\n};\n\n// Build formatted message\nconst icons = {\n  info: 'ℹ️',\n  success: '✅',\n  warning: '⚠️',\n  error: '❌',\n  alert: '🚨'\n};\n\nconst icon = icons[notification.type] || 'ℹ️';\n\nconst formattedMessage = `${icon} *${notification.title}*\\n\\n${notification.message}\\n\\n_Source: ${notification.source}_`;\n\nreturn {\n  ...notification,\n  formatted_message: formattedMessage\n};"
+      },
+      "id": "format-message",
+      "name": "Format Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "telegram_messages",
+        "columns": "message_id,chat_id,type,title,priority,source,created_at"
+      },
+      "id": "log-message",
+      "name": "Log Message",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [690, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.formatted_message }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "send-telegram",
+      "name": "Send Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [910, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-credentials",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, message_id: $('Format Message').item.json.message_id, sent_at: new Date().toISOString() }) }}"
+      },
+      "id": "respond-success",
+      "name": "Return Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1130, 300]
+    }
+  ],
+  "connections": {
+    "Notification Request": {
+      "main": [
+        [
+          {
+            "node": "Format Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Message": {
+      "main": [
+        [
+          {
+            "node": "Log Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Message": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Telegram": {
+      "main": [
+        [
+          {
+            "node": "Return Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "Telegram"
+    },
+    {
+      "name": "Notifications"
+    }
+  ]
+}

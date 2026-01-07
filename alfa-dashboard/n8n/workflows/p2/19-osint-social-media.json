@@ -1,0 +1,326 @@
+{
+  "name": "P2-19 OSINT Social Media",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osint/social",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Social Media Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $input.first().json;\n\nconst companyName = request.company_name;\nconst domain = request.domain || null;\n\n// Generate research ID\nconst researchId = `SOC-${Date.now()}`;\n\n// Social platforms to search\nconst platforms = [\n  { name: 'LinkedIn', searchQuery: `site:linkedin.com/company \"${companyName}\"` },\n  { name: 'Twitter', searchQuery: `site:twitter.com \"${companyName}\"` },\n  { name: 'Facebook', searchQuery: `site:facebook.com \"${companyName}\"` },\n  { name: 'Instagram', searchQuery: `site:instagram.com \"${companyName}\"` },\n  { name: 'YouTube', searchQuery: `site:youtube.com \"${companyName}\"` },\n  { name: 'GitHub', searchQuery: `site:github.com \"${companyName}\"` }\n];\n\nreturn {\n  research_id: researchId,\n  company_name: companyName,\n  domain,\n  platforms,\n  requested_by: request.requested_by || 'api',\n  started_at: new Date().toISOString()\n};"
+      },
+      "id": "prepare-search",
+      "name": "Prepare Social Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/customsearch/v1",
+        "options": {
+          "timeout": 15000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.platforms[0].searchQuery }}"
+            },
+            {
+              "name": "key",
+              "value": "={{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "cx",
+              "value": "={{ $env.GOOGLE_CSE_ID }}"
+            },
+            {
+              "name": "num",
+              "value": "5"
+            }
+          ]
+        }
+      },
+      "id": "search-linkedin",
+      "name": "Search LinkedIn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 100],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/customsearch/v1",
+        "options": {
+          "timeout": 15000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Prepare Social Search').item.json.platforms[1].searchQuery }}"
+            },
+            {
+              "name": "key",
+              "value": "={{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "cx",
+              "value": "={{ $env.GOOGLE_CSE_ID }}"
+            },
+            {
+              "name": "num",
+              "value": "5"
+            }
+          ]
+        }
+      },
+      "id": "search-twitter",
+      "name": "Search Twitter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 250],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/customsearch/v1",
+        "options": {
+          "timeout": 15000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Prepare Social Search').item.json.platforms[4].searchQuery }}"
+            },
+            {
+              "name": "key",
+              "value": "={{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "cx",
+              "value": "={{ $env.GOOGLE_CSE_ID }}"
+            },
+            {
+              "name": "num",
+              "value": "5"
+            }
+          ]
+        }
+      },
+      "id": "search-youtube",
+      "name": "Search YouTube",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 400],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/customsearch/v1",
+        "options": {
+          "timeout": 15000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Prepare Social Search').item.json.platforms[5].searchQuery }}"
+            },
+            {
+              "name": "key",
+              "value": "={{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "cx",
+              "value": "={{ $env.GOOGLE_CSE_ID }}"
+            },
+            {
+              "name": "num",
+              "value": "5"
+            }
+          ]
+        }
+      },
+      "id": "search-github",
+      "name": "Search GitHub",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 550],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const search = $('Prepare Social Search').first().json;\n\nconst linkedinResults = $('Search LinkedIn').first()?.json?.items || [];\nconst twitterResults = $('Search Twitter').first()?.json?.items || [];\nconst youtubeResults = $('Search YouTube').first()?.json?.items || [];\nconst githubResults = $('Search GitHub').first()?.json?.items || [];\n\nconst extractProfiles = (results, platform) => {\n  return results.map(r => ({\n    platform,\n    url: r.link,\n    title: r.title,\n    snippet: r.snippet\n  }));\n};\n\nconst allProfiles = [\n  ...extractProfiles(linkedinResults, 'LinkedIn'),\n  ...extractProfiles(twitterResults, 'Twitter'),\n  ...extractProfiles(youtubeResults, 'YouTube'),\n  ...extractProfiles(githubResults, 'GitHub')\n];\n\n// Group by platform\nconst byPlatform = {\n  linkedin: linkedinResults.length > 0 ? linkedinResults[0].link : null,\n  twitter: twitterResults.length > 0 ? twitterResults[0].link : null,\n  youtube: youtubeResults.length > 0 ? youtubeResults[0].link : null,\n  github: githubResults.length > 0 ? githubResults[0].link : null\n};\n\n// Calculate social presence score\nconst presenceScore = Object.values(byPlatform).filter(Boolean).length * 25;\n\nconst profile = {\n  research_id: search.research_id,\n  company_name: search.company_name,\n  \n  // Primary profiles\n  linkedin_url: byPlatform.linkedin,\n  twitter_url: byPlatform.twitter,\n  youtube_url: byPlatform.youtube,\n  github_url: byPlatform.github,\n  \n  // All found results\n  all_profiles: allProfiles,\n  profiles_count: allProfiles.length,\n  \n  // Presence analysis\n  social_presence_score: presenceScore,\n  platforms_found: Object.values(byPlatform).filter(Boolean).length,\n  \n  // Metadata\n  compiled_at: new Date().toISOString()\n};\n\nreturn profile;"
+      },
+      "id": "compile-social",
+      "name": "Compile Social Profile",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "osint_social",
+        "columns": "research_id,company_name,linkedin_url,twitter_url,youtube_url,github_url,social_presence_score,profiles_count,profile_data,compiled_at"
+      },
+      "id": "save-social",
+      "name": "Save Social Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1130, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Return Social Profile",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1350, 300]
+    }
+  ],
+  "connections": {
+    "Social Media Request": {
+      "main": [
+        [
+          {
+            "node": "Prepare Social Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Social Search": {
+      "main": [
+        [
+          {
+            "node": "Search LinkedIn",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Search Twitter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Search YouTube",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Search GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Compile Social Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Twitter": {
+      "main": [
+        [
+          {
+            "node": "Compile Social Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search YouTube": {
+      "main": [
+        [
+          {
+            "node": "Compile Social Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search GitHub": {
+      "main": [
+        [
+          {
+            "node": "Compile Social Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Social Profile": {
+      "main": [
+        [
+          {
+            "node": "Save Social Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Social Profile": {
+      "main": [
+        [
+          {
+            "node": "Return Social Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "OSINT"
+    },
+    {
+      "name": "Social-Media"
+    }
+  ]
+}

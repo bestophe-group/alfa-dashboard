@@ -1,0 +1,182 @@
+{
+  "name": "P0-04 Agent Audit Trail",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent-action",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Agent Action Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const action = $input.first().json;\n\n// Anomaly detection thresholds\nconst MAX_FILES_MODIFIED = 5;\nconst MAX_TOKENS_USED = 10000;\nconst SUSPICIOUS_PATTERNS = ['rm -rf', 'DROP TABLE', 'DELETE FROM', 'sudo', 'chmod 777'];\n\nconst anomalies = [];\n\n// Check file count\nif (action.files_modified && action.files_modified.length > MAX_FILES_MODIFIED) {\n  anomalies.push({\n    type: 'too_many_files',\n    severity: 'warning',\n    message: `Modified ${action.files_modified.length} files (threshold: ${MAX_FILES_MODIFIED})`,\n    value: action.files_modified.length\n  });\n}\n\n// Check token usage\nif (action.tokens_used && action.tokens_used > MAX_TOKENS_USED) {\n  anomalies.push({\n    type: 'high_token_usage',\n    severity: 'warning',\n    message: `Used ${action.tokens_used} tokens (threshold: ${MAX_TOKENS_USED})`,\n    value: action.tokens_used\n  });\n}\n\n// Check for suspicious commands\nif (action.commands_executed) {\n  for (const cmd of action.commands_executed) {\n    for (const pattern of SUSPICIOUS_PATTERNS) {\n      if (cmd.toLowerCase().includes(pattern.toLowerCase())) {\n        anomalies.push({\n          type: 'suspicious_command',\n          severity: 'critical',\n          message: `Suspicious command detected: ${pattern}`,\n          value: cmd\n        });\n      }\n    }\n  }\n}\n\n// Check for sensitive file access\nconst sensitivePatterns = ['.env', 'secrets', 'credentials', 'password', 'api_key'];\nif (action.files_modified) {\n  for (const file of action.files_modified) {\n    for (const pattern of sensitivePatterns) {\n      if (file.toLowerCase().includes(pattern)) {\n        anomalies.push({\n          type: 'sensitive_file_access',\n          severity: 'warning',\n          message: `Sensitive file accessed: ${file}`,\n          value: file\n        });\n      }\n    }\n  }\n}\n\nreturn {\n  session_id: action.session_id,\n  action_type: action.action_type,\n  files_modified: action.files_modified || [],\n  tokens_used: action.tokens_used || 0,\n  commands_executed: action.commands_executed || [],\n  model: action.model || 'unknown',\n  user: action.user || 'unknown',\n  has_anomaly: anomalies.length > 0,\n  anomalies,\n  max_severity: anomalies.length > 0 ? anomalies.reduce((max, a) => a.severity === 'critical' ? 'critical' : max, 'warning') : 'none',\n  timestamp: new Date().toISOString()\n};"
+      },
+      "id": "analyze-action",
+      "name": "Analyze Action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "agent_audit_log",
+        "columns": "session_id,action_type,files_modified,tokens_used,commands_executed,model,user_id,has_anomaly,anomalies,created_at",
+        "values": "={{ $json.session_id }},={{ $json.action_type }},={{ JSON.stringify($json.files_modified) }},={{ $json.tokens_used }},={{ JSON.stringify($json.commands_executed) }},={{ $json.model }},={{ $json.user }},={{ $json.has_anomaly }},={{ JSON.stringify($json.anomalies) }},={{ $json.timestamp }}"
+      },
+      "id": "log-to-db",
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [690, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-anomaly",
+              "leftValue": "={{ $json.has_anomaly }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-anomaly",
+      "name": "Has Anomaly?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#alerts-security",
+        "text": "={{ $json.max_severity === 'critical' ? '🚨 CRITICAL' : '⚠️ WARNING' }} Agent Anomaly Detected",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "{{ $json.max_severity === 'critical' ? '🚨' : '⚠️' }} *Agent Anomaly Detected*\n\n*Session:* `{{ $json.session_id }}`\n*Action:* {{ $json.action_type }}\n*User:* {{ $json.user }}\n*Model:* {{ $json.model }}"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Anomalies:*\n{{ $json.anomalies.map(a => `• [${a.severity.toUpperCase()}] ${a.message}`).join('\\n') }}"
+              }
+            },
+            {
+              "type": "context",
+              "elements": [
+                {
+                  "type": "mrkdwn",
+                  "text": "Files: {{ $json.files_modified.length }} | Tokens: {{ $json.tokens_used }} | Commands: {{ $json.commands_executed.length }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-alert",
+      "name": "Slack Anomaly Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1130, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Agent Action Webhook": {
+      "main": [
+        [
+          {
+            "node": "Analyze Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Action": {
+      "main": [
+        [
+          {
+            "node": "Log to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Has Anomaly?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Anomaly?": {
+      "main": [
+        [
+          {
+            "node": "Slack Anomaly Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P0-Critical"
+    },
+    {
+      "name": "Security"
+    },
+    {
+      "name": "Audit"
+    }
+  ]
+}

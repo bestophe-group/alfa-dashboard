@@ -1,0 +1,261 @@
+{
+  "name": "P0-06 Incident Response Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incident-alert",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Alert Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const alert = $input.first().json;\n\n// Severity mapping\nconst SEVERITY_LEVELS = {\n  'critical': { priority: 'P1', response_time: '15min', escalation: true },\n  'high': { priority: 'P2', response_time: '1h', escalation: true },\n  'medium': { priority: 'P3', response_time: '4h', escalation: false },\n  'low': { priority: 'P4', response_time: '24h', escalation: false }\n};\n\nconst severity = alert.severity || 'medium';\nconst severityInfo = SEVERITY_LEVELS[severity];\n\n// Generate incident ID\nconst incidentId = `SEC-${Date.now()}`;\n\n// Create post-mortem template\nconst postMortemTemplate = `# Post-Mortem: ${incidentId}\n\n## Summary\n- **Incident ID:** ${incidentId}\n- **Severity:** ${severity.toUpperCase()}\n- **Priority:** ${severityInfo.priority}\n- **Detected:** ${new Date().toISOString()}\n- **Source:** ${alert.source || 'Unknown'}\n\n## Timeline\n- [ ] Incident detected\n- [ ] Team notified\n- [ ] Investigation started\n- [ ] Root cause identified\n- [ ] Fix implemented\n- [ ] Incident resolved\n- [ ] Post-mortem completed\n\n## Description\n${alert.description || 'To be filled'}\n\n## Impact\n- Services affected:\n- Users affected:\n- Duration:\n\n## Root Cause\nTo be determined\n\n## Resolution\nTo be filled\n\n## Action Items\n- [ ] \n- [ ] \n\n## Lessons Learned\n- \n`;\n\nreturn {\n  incident_id: incidentId,\n  severity,\n  priority: severityInfo.priority,\n  response_time: severityInfo.response_time,\n  needs_escalation: severityInfo.escalation,\n  source: alert.source || 'monitoring',\n  service: alert.service || 'unknown',\n  description: alert.description || 'Alert triggered',\n  metrics: alert.metrics || {},\n  post_mortem_template: postMortemTemplate,\n  oncall_team: alert.oncall_team || 'platform',\n  timestamp: new Date().toISOString()\n};"
+      },
+      "id": "process-alert",
+      "name": "Process Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "security_incidents",
+        "columns": "incident_id,severity,priority,source,service,description,needs_escalation,oncall_team,status,created_at",
+        "values": "={{ $json.incident_id }},={{ $json.severity }},={{ $json.priority }},={{ $json.source }},={{ $json.service }},={{ $json.description }},={{ $json.needs_escalation }},={{ $json.oncall_team }},=open,={{ $json.timestamp }}"
+      },
+      "id": "save-incident",
+      "name": "Save Incident",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [690, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#incidents",
+        "text": "🚨 Security Incident {{ $json.incident_id }}",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "🚨 Security Incident Detected"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Incident ID:*\n{{ $json.incident_id }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Severity:*\n{{ $json.severity.toUpperCase() }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Priority:*\n{{ $json.priority }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Response Time:*\n{{ $json.response_time }}"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Service:* {{ $json.service }}\n*Source:* {{ $json.source }}\n\n*Description:*\n{{ $json.description }}"
+              }
+            },
+            {
+              "type": "divider"
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*On-Call Team:* @{{ $json.oncall_team }}"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🔍 Investigate"
+                  },
+                  "style": "primary",
+                  "value": "investigate_{{ $json.incident_id }}"
+                },
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "✅ Acknowledge"
+                  },
+                  "value": "ack_{{ $json.incident_id }}"
+                },
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "📈 View Metrics"
+                  },
+                  "url": "={{ $env.GRAFANA_URL }}/d/incidents"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-incident",
+      "name": "Slack Incident Channel",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [910, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-escalation",
+              "leftValue": "={{ $json.needs_escalation }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "needs-escalation",
+      "name": "Needs Escalation?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [910, 400]
+    },
+    {
+      "parameters": {
+        "resource": "issue",
+        "operation": "create",
+        "owner": "={{ $env.GITHUB_OWNER }}",
+        "repository": "={{ $env.GITHUB_REPO }}",
+        "title": "🚨 [{{ $json.priority }}] Security Incident: {{ $json.incident_id }}",
+        "body": "{{ $json.post_mortem_template }}",
+        "labels": ["incident", "security", "{{ $json.priority.toLowerCase() }}"]
+      },
+      "id": "create-github-issue",
+      "name": "Create Post-Mortem Issue",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [1130, 400],
+      "credentials": {
+        "githubApi": {
+          "id": "github-credentials",
+          "name": "GitHub API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Alert Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Alert": {
+      "main": [
+        [
+          {
+            "node": "Save Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Incident": {
+      "main": [
+        [
+          {
+            "node": "Slack Incident Channel",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Needs Escalation?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Escalation?": {
+      "main": [
+        [
+          {
+            "node": "Create Post-Mortem Issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P0-Critical"
+    },
+    {
+      "name": "Security"
+    },
+    {
+      "name": "Incident-Response"
+    }
+  ]
+}

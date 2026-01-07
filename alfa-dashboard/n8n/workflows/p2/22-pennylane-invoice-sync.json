@@ -1,0 +1,255 @@
+{
+  "name": "P2-22 PennyLane Invoice Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Weekdays at 9AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.pennylane.com/api/external/v1/customer_invoices",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filter[status]",
+              "value": "pending,late"
+            }
+          ]
+        }
+      },
+      "id": "fetch-invoices",
+      "name": "Fetch PennyLane Invoices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "pennylane-credentials",
+          "name": "PennyLane API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const invoices = $input.first().json.invoices || [];\n\nconst processed = invoices.map(inv => ({\n  invoice_id: inv.id,\n  invoice_number: inv.invoice_number,\n  customer_name: inv.customer?.name || 'Unknown',\n  customer_email: inv.customer?.email || null,\n  amount: inv.amount,\n  currency: inv.currency || 'EUR',\n  status: inv.status,\n  due_date: inv.due_date,\n  issue_date: inv.date,\n  days_overdue: inv.status === 'late' ? Math.floor((Date.now() - new Date(inv.due_date)) / (1000 * 60 * 60 * 24)) : 0,\n  pdf_url: inv.pdf_url\n}));\n\nconst summary = {\n  total_invoices: processed.length,\n  total_pending: processed.filter(i => i.status === 'pending').length,\n  total_late: processed.filter(i => i.status === 'late').length,\n  total_amount: processed.reduce((sum, i) => sum + (i.amount || 0), 0),\n  late_amount: processed.filter(i => i.status === 'late').reduce((sum, i) => sum + (i.amount || 0), 0),\n  synced_at: new Date().toISOString()\n};\n\nreturn {\n  summary,\n  invoices: processed,\n  late_invoices: processed.filter(i => i.status === 'late')\n};"
+      },
+      "id": "process-invoices",
+      "name": "Process Invoices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "pennylane_sync_logs",
+        "columns": "total_invoices,total_pending,total_late,total_amount,late_amount,synced_at"
+      },
+      "id": "log-sync",
+      "name": "Log Sync",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [910, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-late",
+              "leftValue": "={{ $json.summary.total_late }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-late-invoices",
+      "name": "Has Late Invoices?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#finance",
+        "text": "💰 PennyLane Sync Report",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "💰 PennyLane Invoice Report"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Total Invoices:*\n{{ $json.summary.total_invoices }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Total Amount:*\n{{ $json.summary.total_amount }}€"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Pending:*\n{{ $json.summary.total_pending }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*⚠️ Late:*\n{{ $json.summary.total_late }}"
+                }
+              ]
+            },
+            {
+              "type": "divider"
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Late Amount:* {{ $json.summary.late_amount }}€\n*Synced:* {{ $json.summary.synced_at }}"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "📊 Open PennyLane"
+                  },
+                  "url": "https://app.pennylane.com"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-report",
+      "name": "Slack Finance Report",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1350, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Weekdays at 9AM": {
+      "main": [
+        [
+          {
+            "node": "Fetch PennyLane Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch PennyLane Invoices": {
+      "main": [
+        [
+          {
+            "node": "Process Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Invoices": {
+      "main": [
+        [
+          {
+            "node": "Log Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Sync": {
+      "main": [
+        [
+          {
+            "node": "Has Late Invoices?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Late Invoices?": {
+      "main": [
+        [
+          {
+            "node": "Slack Finance Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "Finance"
+    },
+    {
+      "name": "PennyLane"
+    }
+  ]
+}

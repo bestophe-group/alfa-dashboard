@@ -1,0 +1,167 @@
+{
+  "name": "P0-05 Désalignement Reporter",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "desalignment-incident",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Incident Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const incident = $input.first().json;\n\n// Incident types from ALFA methodology\nconst INCIDENT_TYPES = {\n  'hallucination': { severity: 'high', time_cost_hours: 4 },\n  'scope_drift': { severity: 'medium', time_cost_hours: 2 },\n  'free_interpretation': { severity: 'medium', time_cost_hours: 3 },\n  'rule_circumvention': { severity: 'high', time_cost_hours: 4 },\n  'overclaim': { severity: 'low', time_cost_hours: 1 },\n  'mock_data': { severity: 'high', time_cost_hours: 5 },\n  'untested_code': { severity: 'medium', time_cost_hours: 3 },\n  'config_drift': { severity: 'medium', time_cost_hours: 2 }\n};\n\nconst typeInfo = INCIDENT_TYPES[incident.incident_type] || { severity: 'unknown', time_cost_hours: 2 };\n\nreturn {\n  incident_id: `INC-${Date.now()}`,\n  incident_type: incident.incident_type,\n  severity: incident.severity || typeInfo.severity,\n  session_id: incident.session_id,\n  description: incident.description,\n  expected_behavior: incident.expected_behavior,\n  actual_behavior: incident.actual_behavior,\n  root_cause: incident.root_cause || 'To be determined',\n  time_lost_hours: incident.time_lost_hours || typeInfo.time_cost_hours,\n  detected_by: incident.detected_by || 'manual',\n  model: incident.model || 'unknown',\n  user: incident.user || 'unknown',\n  files_affected: incident.files_affected || [],\n  remediation_steps: incident.remediation_steps || [],\n  timestamp: new Date().toISOString()\n};"
+      },
+      "id": "process-incident",
+      "name": "Process Incident",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "desalignment_incidents",
+        "columns": "incident_id,incident_type,severity,session_id,description,expected_behavior,actual_behavior,root_cause,time_lost_hours,detected_by,model,user_id,files_affected,remediation_steps,created_at",
+        "values": "={{ $json.incident_id }},={{ $json.incident_type }},={{ $json.severity }},={{ $json.session_id }},={{ $json.description }},={{ $json.expected_behavior }},={{ $json.actual_behavior }},={{ $json.root_cause }},={{ $json.time_lost_hours }},={{ $json.detected_by }},={{ $json.model }},={{ $json.user }},={{ JSON.stringify($json.files_affected) }},={{ JSON.stringify($json.remediation_steps) }},={{ $json.timestamp }}"
+      },
+      "id": "save-to-db",
+      "name": "Save to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [690, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#incidents-desalignment",
+        "text": "🔴 Désalignement Incident Reported",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "🔴 Désalignement Incident"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Type:*\n{{ $json.incident_type }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Severity:*\n{{ $json.severity }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Time Lost:*\n{{ $json.time_lost_hours }}h"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Detected By:*\n{{ $json.detected_by }}"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Description:*\n{{ $json.description }}"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Expected:* {{ $json.expected_behavior }}\n*Actual:* {{ $json.actual_behavior }}"
+              }
+            },
+            {
+              "type": "context",
+              "elements": [
+                {
+                  "type": "mrkdwn",
+                  "text": "ID: {{ $json.incident_id }} | Session: {{ $json.session_id }} | User: {{ $json.user }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-alert",
+      "name": "Slack Incident Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [910, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Incident Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Incident": {
+      "main": [
+        [
+          {
+            "node": "Save to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Slack Incident Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P0-Critical"
+    },
+    {
+      "name": "Anti-Misalignment"
+    }
+  ]
+}

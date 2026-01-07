@@ -1,0 +1,246 @@
+{
+  "name": "P1-07 PennyLane Sync Factures",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily 9AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://app.pennylane.com/api/external/v1/customer_invoices",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.PENNYLANE_API_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filter[updated_at][gte]",
+              "value": "={{ $now.minus({days: 1}).toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-invoices",
+      "name": "Fetch PennyLane Invoices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "invoices",
+        "options": {}
+      },
+      "id": "split-invoices",
+      "name": "Split Invoices",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const invoice = $input.first().json;\n\nreturn {\n  invoice_id: invoice.id,\n  invoice_number: invoice.invoice_number,\n  client_name: invoice.customer?.name || 'Unknown',\n  client_email: invoice.customer?.email,\n  amount: invoice.total_amount || 0,\n  currency: invoice.currency || 'EUR',\n  status: invoice.status,\n  is_late: invoice.status === 'late' || invoice.status === 'unpaid',\n  due_date: invoice.due_date,\n  paid_date: invoice.paid_date,\n  invoice_date: invoice.date,\n  pdf_url: invoice.file_url,\n  line_items: invoice.line_items?.length || 0,\n  updated_at: invoice.updated_at\n};"
+      },
+      "id": "transform-invoice",
+      "name": "Transform Invoice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": "public",
+        "table": "invoices",
+        "columns": "invoice_id,invoice_number,client_name,client_email,amount,currency,status,is_late,due_date,paid_date,invoice_date,pdf_url,line_items,updated_at",
+        "conflictColumns": "invoice_id"
+      },
+      "id": "save-to-db",
+      "name": "Save to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1130, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-late",
+              "leftValue": "={{ $json.is_late }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-late",
+      "name": "Is Late?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#finance-alerts",
+        "text": "⚠️ Late Invoice Alert",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "⚠️ *Late Invoice Detected*\n\n*Invoice:* {{ $json.invoice_number }}\n*Client:* {{ $json.client_name }}\n*Amount:* {{ $json.amount }} {{ $json.currency }}\n*Due Date:* {{ $json.due_date }}\n*Status:* {{ $json.status }}"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "View in PennyLane"
+                  },
+                  "url": "https://app.pennylane.com/invoices/{{ $json.invoice_id }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-late-alert",
+      "name": "Slack Late Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1570, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 9AM": {
+      "main": [
+        [
+          {
+            "node": "Fetch PennyLane Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch PennyLane Invoices": {
+      "main": [
+        [
+          {
+            "node": "Split Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Invoices": {
+      "main": [
+        [
+          {
+            "node": "Transform Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Invoice": {
+      "main": [
+        [
+          {
+            "node": "Save to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Is Late?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Late?": {
+      "main": [
+        [
+          {
+            "node": "Slack Late Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P1-High"
+    },
+    {
+      "name": "Finance"
+    }
+  ]
+}

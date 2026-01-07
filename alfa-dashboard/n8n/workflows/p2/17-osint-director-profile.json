@@ -1,0 +1,216 @@
+{
+  "name": "P2-17 OSINT Director Profile",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osint/director",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Director Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $input.first().json;\n\nconst firstName = request.first_name;\nconst lastName = request.last_name;\nconst company = request.company || null;\nconst birthYear = request.birth_year || null;\n\n// Generate profile ID\nconst profileId = `DIR-${Date.now()}`;\n\nreturn {\n  profile_id: profileId,\n  first_name: firstName,\n  last_name: lastName,\n  full_name: `${firstName} ${lastName}`,\n  company,\n  birth_year: birthYear,\n  requested_by: request.requested_by || 'api',\n  started_at: new Date().toISOString()\n};"
+      },
+      "id": "prepare-search",
+      "name": "Prepare Director Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.pappers.fr/v2/recherche-dirigeants",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.full_name }}"
+            }
+          ]
+        }
+      },
+      "id": "search-pappers",
+      "name": "Search Pappers Directors",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 200],
+      "continueOnFail": true,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "pappers-credentials",
+          "name": "Pappers API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/customsearch/v1",
+        "options": {
+          "timeout": 15000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Prepare Director Search').item.json.full_name }} {{ $('Prepare Director Search').item.json.company || '' }} linkedin"
+            },
+            {
+              "name": "key",
+              "value": "={{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "cx",
+              "value": "={{ $env.GOOGLE_CSE_ID }}"
+            }
+          ]
+        }
+      },
+      "id": "search-google",
+      "name": "Google LinkedIn Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 400],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const search = $('Prepare Director Search').first().json;\nconst pappersResults = $('Search Pappers Directors').first()?.json?.resultats || [];\nconst googleResults = $('Google LinkedIn Search').first()?.json?.items || [];\n\n// Find matching director in Pappers\nconst matchingDirectors = pappersResults.filter(d => {\n  const nameMatch = d.nom?.toLowerCase().includes(search.last_name.toLowerCase());\n  const firstNameMatch = d.prenom?.toLowerCase().includes(search.first_name.toLowerCase());\n  return nameMatch && firstNameMatch;\n});\n\n// Extract companies where person is director\nconst companies = [];\nfor (const director of matchingDirectors) {\n  if (director.entreprises) {\n    for (const entreprise of director.entreprises) {\n      companies.push({\n        name: entreprise.nom_entreprise,\n        siren: entreprise.siren,\n        role: entreprise.qualite,\n        start_date: entreprise.date_prise_de_poste,\n        active: entreprise.actif\n      });\n    }\n  }\n}\n\n// Extract LinkedIn profiles from Google results\nconst linkedinProfiles = googleResults\n  .filter(r => r.link?.includes('linkedin.com/in/'))\n  .map(r => ({\n    url: r.link,\n    title: r.title,\n    snippet: r.snippet\n  }));\n\n// Build profile\nconst profile = {\n  profile_id: search.profile_id,\n  full_name: search.full_name,\n  first_name: search.first_name,\n  last_name: search.last_name,\n  \n  // Director positions\n  companies_count: companies.length,\n  active_positions: companies.filter(c => c.active).length,\n  companies,\n  \n  // Online presence\n  linkedin_profiles: linkedinProfiles,\n  has_linkedin: linkedinProfiles.length > 0,\n  \n  // Metadata\n  data_quality: matchingDirectors.length > 0 ? 'high' : 'low',\n  sources_used: ['Pappers', 'Google'],\n  compiled_at: new Date().toISOString()\n};\n\nreturn profile;"
+      },
+      "id": "compile-director",
+      "name": "Compile Director Profile",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "osint_directors",
+        "columns": "profile_id,full_name,companies_count,active_positions,has_linkedin,data_quality,profile_data,compiled_at"
+      },
+      "id": "save-director",
+      "name": "Save Director Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1130, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Return Director Profile",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1350, 300]
+    }
+  ],
+  "connections": {
+    "Director Request": {
+      "main": [
+        [
+          {
+            "node": "Prepare Director Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Director Search": {
+      "main": [
+        [
+          {
+            "node": "Search Pappers Directors",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google LinkedIn Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Pappers Directors": {
+      "main": [
+        [
+          {
+            "node": "Compile Director Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google LinkedIn Search": {
+      "main": [
+        [
+          {
+            "node": "Compile Director Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Director Profile": {
+      "main": [
+        [
+          {
+            "node": "Save Director Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Director Profile": {
+      "main": [
+        [
+          {
+            "node": "Return Director Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "OSINT"
+    },
+    {
+      "name": "Directors"
+    }
+  ]
+}

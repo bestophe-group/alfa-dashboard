@@ -1,0 +1,250 @@
+{
+  "name": "P1-09 Health Check Services",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Services to monitor\nconst services = [\n  { name: 'Traefik', url: 'http://alfa-traefik:8080/api/version', type: 'internal' },\n  { name: 'PostgreSQL', url: 'http://alfa-postgres:5432', type: 'tcp', check: 'pg_isready' },\n  { name: 'Redis', url: 'http://alfa-redis:6379', type: 'tcp', check: 'ping' },\n  { name: 'n8n', url: 'http://alfa-n8n:5678/healthz', type: 'internal' },\n  { name: 'Infisical', url: 'http://alfa-infisical:8080/api/status', type: 'internal' },\n  { name: 'Uptime Kuma', url: 'http://alfa-uptime-kuma:3001', type: 'internal' }\n];\n\n// Add external services from env\nif ($env.EXTERNAL_SERVICES) {\n  const external = JSON.parse($env.EXTERNAL_SERVICES);\n  services.push(...external.map(s => ({ ...s, type: 'external' })));\n}\n\nreturn services.map(s => ({ json: s }));"
+      },
+      "id": "get-services",
+      "name": "Get Services List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "id": "batch-services",
+      "name": "Batch Services",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 5000,
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "check-service",
+      "name": "Check Service",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const service = $('Batch Services').first().json;\nconst response = $input.first();\n\nconst isError = response.error !== undefined;\nconst statusCode = response.json?.statusCode || response.statusCode || 0;\nconst responseTime = response.json?.responseTime || 0;\n\nconst isHealthy = !isError && (statusCode >= 200 && statusCode < 400);\n\nreturn {\n  service_name: service.name,\n  service_url: service.url,\n  service_type: service.type,\n  is_healthy: isHealthy,\n  status_code: statusCode,\n  response_time_ms: responseTime,\n  error_message: isError ? response.error.message : null,\n  checked_at: new Date().toISOString()\n};"
+      },
+      "id": "process-result",
+      "name": "Process Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "service_health_logs",
+        "columns": "service_name,service_url,service_type,is_healthy,status_code,response_time_ms,error_message,checked_at"
+      },
+      "id": "log-to-db",
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1350, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-unhealthy",
+              "leftValue": "={{ $json.is_healthy }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-unhealthy",
+      "name": "Is Unhealthy?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1570, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#alerts",
+        "text": "🔴 Service DOWN: {{ $json.service_name }}",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "🔴 *Service DOWN*\n\n*Service:* {{ $json.service_name }}\n*URL:* {{ $json.service_url }}\n*Status Code:* {{ $json.status_code }}\n*Error:* {{ $json.error_message || 'N/A' }}\n*Checked:* {{ $json.checked_at }}"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "View Status Page"
+                  },
+                  "url": "={{ $env.UPTIME_KUMA_URL }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-alert",
+      "name": "Slack Down Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1790, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Services List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Services List": {
+      "main": [
+        [
+          {
+            "node": "Batch Services",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Services": {
+      "main": [
+        [
+          {
+            "node": "Check Service",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Service": {
+      "main": [
+        [
+          {
+            "node": "Process Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Result": {
+      "main": [
+        [
+          {
+            "node": "Log to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Is Unhealthy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Unhealthy?": {
+      "main": [
+        [
+          {
+            "node": "Slack Down Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P1-High"
+    },
+    {
+      "name": "Monitoring"
+    }
+  ]
+}

@@ -1,0 +1,215 @@
+{
+  "name": "P2-29 Linear Issue Tracker",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "linear/webhook",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Linear Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json;\n\nconst issue = {\n  issue_id: payload.data?.id,\n  identifier: payload.data?.identifier,\n  title: payload.data?.title,\n  description: payload.data?.description?.substring(0, 500),\n  state: payload.data?.state?.name,\n  priority: payload.data?.priority,\n  priority_label: ['No priority', 'Urgent', 'High', 'Medium', 'Low'][payload.data?.priority] || 'Unknown',\n  assignee: payload.data?.assignee?.name || null,\n  team: payload.data?.team?.name,\n  project: payload.data?.project?.name || null,\n  labels: payload.data?.labels?.map(l => l.name) || [],\n  url: payload.url || `https://linear.app/issue/${payload.data?.identifier}`,\n  action: payload.action,\n  actor: payload.actor?.name,\n  created_at: payload.data?.createdAt,\n  updated_at: payload.data?.updatedAt\n};\n\nconst isUrgent = issue.priority <= 2;\nconst isNewIssue = payload.action === 'create';\nconst isStateChange = payload.action === 'update' && payload.updatedFrom?.stateId;\n\nreturn {\n  ...issue,\n  is_urgent: isUrgent,\n  is_new_issue: isNewIssue,\n  is_state_change: isStateChange,\n  received_at: new Date().toISOString()\n};"
+      },
+      "id": "process-issue",
+      "name": "Process Issue Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "linear_issues",
+        "columns": "issue_id,identifier,title,state,priority,assignee,team,action,received_at"
+      },
+      "id": "save-issue",
+      "name": "Save Issue",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [690, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "is-urgent",
+              "leftValue": "={{ $json.is_urgent }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "is-new",
+              "leftValue": "={{ $json.is_new_issue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-urgent-new",
+      "name": "Urgent & New?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#dev",
+        "text": "🚨 Urgent Linear Issue",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "🚨 Urgent Issue Created"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Issue:*\n{{ $json.identifier }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Priority:*\n{{ $json.priority_label }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Team:*\n{{ $json.team }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Created by:*\n{{ $json.actor }}"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*{{ $json.title }}*"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🔗 View Issue"
+                  },
+                  "url": "{{ $json.url }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-urgent",
+      "name": "Slack Urgent Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1130, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Linear Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Issue Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Issue Event": {
+      "main": [
+        [
+          {
+            "node": "Save Issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Issue": {
+      "main": [
+        [
+          {
+            "node": "Urgent & New?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Urgent & New?": {
+      "main": [
+        [
+          {
+            "node": "Slack Urgent Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "Linear"
+    },
+    {
+      "name": "Issues"
+    }
+  ]
+}

@@ -1,0 +1,242 @@
+{
+  "name": "P0-03 Eval Regression Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "eval-results",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Eval Results Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": "public",
+        "table": "eval_runs",
+        "limit": 1,
+        "sort": {
+          "values": [
+            {
+              "column": "created_at",
+              "direction": "DESC"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-previous-eval",
+      "name": "Get Previous Eval",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [470, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const current = $('Eval Results Webhook').first().json;\nconst previous = $input.first().json;\n\nconst metrics = ['accuracy', 'relevance', 'faithfulness', 'coherence'];\nconst regressions = [];\nconst threshold = 0.05; // 5% regression threshold\n\nfor (const metric of metrics) {\n  const currentScore = current[metric] || 0;\n  const previousScore = previous[metric] || 0;\n  const diff = previousScore - currentScore;\n  const percentDrop = previousScore > 0 ? (diff / previousScore) * 100 : 0;\n  \n  if (percentDrop > threshold * 100) {\n    regressions.push({\n      metric,\n      previous: previousScore,\n      current: currentScore,\n      drop_percent: Math.round(percentDrop * 100) / 100\n    });\n  }\n}\n\nreturn {\n  has_regression: regressions.length > 0,\n  regressions,\n  current_scores: {\n    accuracy: current.accuracy,\n    relevance: current.relevance,\n    faithfulness: current.faithfulness,\n    coherence: current.coherence\n  },\n  previous_scores: {\n    accuracy: previous.accuracy,\n    relevance: previous.relevance,\n    faithfulness: previous.faithfulness,\n    coherence: previous.coherence\n  },\n  commit_sha: current.commit_sha,\n  eval_id: current.eval_id,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "id": "compare-scores",
+      "name": "Compare Scores",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "eval_runs",
+        "columns": "eval_id,commit_sha,accuracy,relevance,faithfulness,coherence,has_regression,created_at",
+        "values": "={{ $json.eval_id }},={{ $json.commit_sha }},={{ $json.current_scores.accuracy }},={{ $json.current_scores.relevance }},={{ $json.current_scores.faithfulness }},={{ $json.current_scores.coherence }},={{ $json.has_regression }},={{ $json.timestamp }}"
+      },
+      "id": "save-eval-run",
+      "name": "Save Eval Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [910, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-regression",
+              "leftValue": "={{ $json.has_regression }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-regression",
+      "name": "Has Regression?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "resource": "issue",
+        "operation": "create",
+        "owner": "={{ $env.GITHUB_OWNER }}",
+        "repository": "={{ $env.GITHUB_REPO }}",
+        "title": "🚨 Eval Regression Detected - {{ $json.regressions.map(r => r.metric).join(', ') }}",
+        "body": "## Eval Regression Alert\n\n**Commit:** `{{ $json.commit_sha }}`\n**Time:** {{ $json.timestamp }}\n\n### Regressions Detected\n\n{{ $json.regressions.map(r => `- **${r.metric}**: ${r.previous} → ${r.current} (↓${r.drop_percent}%)`).join('\\n') }}\n\n### Current vs Previous Scores\n\n| Metric | Previous | Current | Change |\n|--------|----------|---------|--------|\n| Accuracy | {{ $json.previous_scores.accuracy }} | {{ $json.current_scores.accuracy }} | {{ ($json.current_scores.accuracy - $json.previous_scores.accuracy).toFixed(3) }} |\n| Relevance | {{ $json.previous_scores.relevance }} | {{ $json.current_scores.relevance }} | {{ ($json.current_scores.relevance - $json.previous_scores.relevance).toFixed(3) }} |\n| Faithfulness | {{ $json.previous_scores.faithfulness }} | {{ $json.current_scores.faithfulness }} | {{ ($json.current_scores.faithfulness - $json.previous_scores.faithfulness).toFixed(3) }} |\n| Coherence | {{ $json.previous_scores.coherence }} | {{ $json.current_scores.coherence }} | {{ ($json.current_scores.coherence - $json.previous_scores.coherence).toFixed(3) }} |\n\n### Action Required\n\n- [ ] Review recent prompt changes\n- [ ] Check for model updates\n- [ ] Verify test data integrity\n- [ ] Consider rollback if critical",
+        "labels": ["regression", "eval", "priority-high"]
+      },
+      "id": "create-github-issue",
+      "name": "Create GitHub Issue",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [1350, 200],
+      "credentials": {
+        "githubApi": {
+          "id": "github-credentials",
+          "name": "GitHub API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#alerts-eval",
+        "text": "🚨 Eval Regression Detected",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "🚨 *Eval Regression Detected*\n\n*Commit:* `{{ $json.commit_sha.substring(0,7) }}`\n\n*Regressions:*\n{{ $json.regressions.map(r => `• ${r.metric}: ${r.previous} → ${r.current} (↓${r.drop_percent}%)`).join('\\n') }}"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "View Issue"
+                  },
+                  "url": "={{ $env.GITHUB_REPO_URL }}/issues"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-alert",
+      "name": "Slack Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1350, 400],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Eval Results Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Previous Eval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Previous Eval": {
+      "main": [
+        [
+          {
+            "node": "Compare Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare Scores": {
+      "main": [
+        [
+          {
+            "node": "Save Eval Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Eval Run": {
+      "main": [
+        [
+          {
+            "node": "Has Regression?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Regression?": {
+      "main": [
+        [
+          {
+            "node": "Create GitHub Issue",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P0-Critical"
+    },
+    {
+      "name": "Testing"
+    }
+  ]
+}

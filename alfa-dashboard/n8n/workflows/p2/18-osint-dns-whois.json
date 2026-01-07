@@ -1,0 +1,290 @@
+{
+  "name": "P2-18 OSINT DNS & WHOIS",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osint/dns",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "DNS Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $input.first().json;\nconst domain = request.domain;\n\n// Generate research ID\nconst researchId = `DNS-${Date.now()}`;\n\n// Extract root domain\nconst domainParts = domain.replace(/^(https?:\\/\\/)?(www\\.)?/, '').split('/');\nconst rootDomain = domainParts[0];\n\nreturn {\n  research_id: researchId,\n  domain: rootDomain,\n  original_input: domain,\n  requested_by: request.requested_by || 'api',\n  started_at: new Date().toISOString()\n};"
+      },
+      "id": "prepare-dns",
+      "name": "Prepare DNS Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://whois.nic.fr/whois",
+        "options": {
+          "timeout": 15000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "domain",
+              "value": "={{ $json.domain }}"
+            }
+          ]
+        }
+      },
+      "id": "whois-lookup",
+      "name": "WHOIS Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://dns.google/resolve",
+        "options": {
+          "timeout": 10000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{ $('Prepare DNS Lookup').item.json.domain }}"
+            },
+            {
+              "name": "type",
+              "value": "A"
+            }
+          ]
+        }
+      },
+      "id": "dns-a-record",
+      "name": "DNS A Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 350],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://dns.google/resolve",
+        "options": {
+          "timeout": 10000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{ $('Prepare DNS Lookup').item.json.domain }}"
+            },
+            {
+              "name": "type",
+              "value": "MX"
+            }
+          ]
+        }
+      },
+      "id": "dns-mx-record",
+      "name": "DNS MX Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 500],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://dns.google/resolve",
+        "options": {
+          "timeout": 10000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{ $('Prepare DNS Lookup').item.json.domain }}"
+            },
+            {
+              "name": "type",
+              "value": "TXT"
+            }
+          ]
+        }
+      },
+      "id": "dns-txt-record",
+      "name": "DNS TXT Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 650],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const search = $('Prepare DNS Lookup').first().json;\nconst whoisRaw = $('WHOIS Lookup').first()?.json || {};\nconst aRecords = $('DNS A Record').first()?.json?.Answer || [];\nconst mxRecords = $('DNS MX Record').first()?.json?.Answer || [];\nconst txtRecords = $('DNS TXT Record').first()?.json?.Answer || [];\n\n// Parse WHOIS data\nconst whoisData = {\n  raw: typeof whoisRaw === 'string' ? whoisRaw : JSON.stringify(whoisRaw),\n  registrar: null,\n  creation_date: null,\n  expiration_date: null,\n  nameservers: []\n};\n\n// Extract IP addresses\nconst ipAddresses = aRecords.map(r => r.data).filter(Boolean);\n\n// Extract mail servers\nconst mailServers = mxRecords.map(r => ({\n  priority: r.data?.split(' ')[0],\n  server: r.data?.split(' ')[1] || r.data\n}));\n\n// Extract TXT records (SPF, DKIM, DMARC)\nconst txtData = txtRecords.map(r => r.data);\nconst spfRecord = txtData.find(t => t?.includes('v=spf1'));\nconst dmarcRecord = txtData.find(t => t?.includes('v=DMARC1'));\n\n// Security analysis\nconst securityAnalysis = {\n  has_spf: !!spfRecord,\n  has_dmarc: !!dmarcRecord,\n  has_mx: mailServers.length > 0,\n  email_security_score: (!!spfRecord + !!dmarcRecord) * 50\n};\n\n// Compile profile\nconst profile = {\n  research_id: search.research_id,\n  domain: search.domain,\n  \n  // DNS Records\n  ip_addresses: ipAddresses,\n  mail_servers: mailServers,\n  txt_records: txtData,\n  \n  // Email security\n  spf_record: spfRecord || null,\n  dmarc_record: dmarcRecord || null,\n  \n  // WHOIS\n  whois: whoisData,\n  \n  // Security analysis\n  security: securityAnalysis,\n  \n  // Metadata\n  compiled_at: new Date().toISOString()\n};\n\nreturn profile;"
+      },
+      "id": "compile-dns",
+      "name": "Compile DNS Profile",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 400]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "osint_dns",
+        "columns": "research_id,domain,ip_addresses,mail_servers,has_spf,has_dmarc,email_security_score,profile_data,compiled_at"
+      },
+      "id": "save-dns",
+      "name": "Save DNS Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1130, 400],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Return DNS Profile",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1350, 400]
+    }
+  ],
+  "connections": {
+    "DNS Request": {
+      "main": [
+        [
+          {
+            "node": "Prepare DNS Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare DNS Lookup": {
+      "main": [
+        [
+          {
+            "node": "WHOIS Lookup",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DNS A Record",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DNS MX Record",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DNS TXT Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WHOIS Lookup": {
+      "main": [
+        [
+          {
+            "node": "Compile DNS Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DNS A Record": {
+      "main": [
+        [
+          {
+            "node": "Compile DNS Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DNS MX Record": {
+      "main": [
+        [
+          {
+            "node": "Compile DNS Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DNS TXT Record": {
+      "main": [
+        [
+          {
+            "node": "Compile DNS Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile DNS Profile": {
+      "main": [
+        [
+          {
+            "node": "Save DNS Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save DNS Profile": {
+      "main": [
+        [
+          {
+            "node": "Return DNS Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "OSINT"
+    },
+    {
+      "name": "DNS"
+    }
+  ]
+}

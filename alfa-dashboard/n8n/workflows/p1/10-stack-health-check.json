@@ -1,0 +1,256 @@
+{
+  "name": "P1-10 Stack Health Check",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 10 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Docker containers to check via Traefik API\nconst containers = [\n  { name: 'alfa-traefik', service: 'traefik' },\n  { name: 'alfa-postgres', service: 'postgres' },\n  { name: 'alfa-redis', service: 'redis' },\n  { name: 'alfa-n8n', service: 'n8n' },\n  { name: 'alfa-infisical', service: 'infisical' },\n  { name: 'alfa-uptime-kuma', service: 'uptime-kuma' }\n];\n\nreturn containers.map(c => ({ json: c }));"
+      },
+      "id": "get-containers",
+      "name": "Get Container List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://alfa-traefik:8080/api/http/services",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "check-traefik-services",
+      "name": "Check Traefik Services",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const containers = $('Get Container List').all();\nconst traefikResponse = $input.first();\n\nlet traefikServices = [];\nif (!traefikResponse.error && traefikResponse.json) {\n  traefikServices = traefikResponse.json;\n}\n\nconst results = [];\nconst timestamp = new Date().toISOString();\n\nfor (const container of containers) {\n  const c = container.json;\n  const traefikService = traefikServices.find(s => s.name?.includes(c.service));\n  \n  results.push({\n    container_name: c.name,\n    service_name: c.service,\n    traefik_status: traefikService ? 'registered' : 'not_found',\n    traefik_servers: traefikService?.serverStatus || {},\n    checked_at: timestamp\n  });\n}\n\n// Calculate overall health\nconst healthyCount = results.filter(r => r.traefik_status === 'registered').length;\nconst totalCount = results.length;\n\nreturn {\n  overall_health: healthyCount === totalCount ? 'healthy' : 'degraded',\n  healthy_services: healthyCount,\n  total_services: totalCount,\n  health_percentage: Math.round((healthyCount / totalCount) * 100),\n  services: results,\n  checked_at: timestamp\n};"
+      },
+      "id": "process-health",
+      "name": "Process Health Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "stack_health_logs",
+        "columns": "overall_health,healthy_services,total_services,health_percentage,services_json,checked_at"
+      },
+      "id": "log-to-db",
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1130, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-degraded",
+              "leftValue": "={{ $json.overall_health }}",
+              "rightValue": "degraded",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-degraded",
+      "name": "Is Degraded?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#alerts",
+        "text": "⚠️ Stack Health Degraded",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "⚠️ Stack Health Degraded"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Status:*\n{{ $json.overall_health }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Health:*\n{{ $json.health_percentage }}%"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Healthy:*\n{{ $json.healthy_services }}/{{ $json.total_services }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Checked:*\n{{ $json.checked_at }}"
+                }
+              ]
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "View Status Page"
+                  },
+                  "url": "={{ $env.UPTIME_KUMA_URL }}"
+                },
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "View Traefik"
+                  },
+                  "url": "={{ $env.TRAEFIK_URL }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-alert",
+      "name": "Slack Degraded Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1570, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 10 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Container List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Container List": {
+      "main": [
+        [
+          {
+            "node": "Check Traefik Services",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Traefik Services": {
+      "main": [
+        [
+          {
+            "node": "Process Health Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Health Status": {
+      "main": [
+        [
+          {
+            "node": "Log to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Is Degraded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Degraded?": {
+      "main": [
+        [
+          {
+            "node": "Slack Degraded Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P1-High"
+    },
+    {
+      "name": "Infrastructure"
+    }
+  ]
+}

@@ -1,0 +1,292 @@
+{
+  "name": "P1-15 Security Audit Trail",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "security-event",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Security Event Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const event = $input.first().json;\n\n// Security event categories\nconst EVENT_CATEGORIES = {\n  'auth': { severity: 'medium', retention_days: 90 },\n  'access': { severity: 'low', retention_days: 30 },\n  'config': { severity: 'high', retention_days: 365 },\n  'secret': { severity: 'critical', retention_days: 365 },\n  'network': { severity: 'medium', retention_days: 60 },\n  'system': { severity: 'medium', retention_days: 90 }\n};\n\nconst category = event.category || 'system';\nconst categoryConfig = EVENT_CATEGORIES[category] || EVENT_CATEGORIES['system'];\n\n// Generate audit ID\nconst auditId = `AUD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;\n\n// Determine if this event needs immediate attention\nconst needsAlert = categoryConfig.severity === 'critical' || \n                   categoryConfig.severity === 'high' ||\n                   event.alert === true;\n\n// Calculate retention date\nconst retentionDate = new Date();\nretentionDate.setDate(retentionDate.getDate() + categoryConfig.retention_days);\n\nreturn {\n  audit_id: auditId,\n  event_type: event.type || 'unknown',\n  category,\n  severity: event.severity || categoryConfig.severity,\n  source: event.source || 'unknown',\n  actor: event.actor || 'system',\n  target: event.target || null,\n  action: event.action || 'unknown',\n  result: event.result || 'unknown',\n  ip_address: event.ip_address || null,\n  user_agent: event.user_agent || null,\n  metadata: event.metadata || {},\n  needs_alert: needsAlert,\n  retention_until: retentionDate.toISOString(),\n  created_at: new Date().toISOString()\n};"
+      },
+      "id": "process-event",
+      "name": "Process Security Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "security_audit_logs",
+        "columns": "audit_id,event_type,category,severity,source,actor,target,action,result,ip_address,user_agent,metadata,retention_until,created_at"
+      },
+      "id": "save-audit",
+      "name": "Save Audit Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [690, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-alert",
+              "leftValue": "={{ $json.needs_alert }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "needs-alert",
+      "name": "Needs Alert?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#security",
+        "text": "🔒 Security Event: {{ $json.audit_id }}",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "🔒 Security Audit Event"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Audit ID:*\n{{ $json.audit_id }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Severity:*\n{{ $json.severity === 'critical' ? '🔴 CRITICAL' : $json.severity === 'high' ? '🟠 HIGH' : '🟡 MEDIUM' }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Category:*\n{{ $json.category }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Event Type:*\n{{ $json.event_type }}"
+                }
+              ]
+            },
+            {
+              "type": "divider"
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Actor:* {{ $json.actor }}\n*Action:* {{ $json.action }}\n*Target:* {{ $json.target || 'N/A' }}\n*Result:* {{ $json.result }}\n*Source:* {{ $json.source }}"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*IP Address:* {{ $json.ip_address || 'N/A' }}\n*Timestamp:* {{ $json.created_at }}"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🔍 Investigate"
+                  },
+                  "style": "primary",
+                  "value": "investigate_{{ $json.audit_id }}"
+                },
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "✅ Acknowledge"
+                  },
+                  "value": "ack_{{ $json.audit_id }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-alert",
+      "name": "Slack Security Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1130, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-critical",
+              "leftValue": "={{ $json.severity }}",
+              "rightValue": "critical",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-critical",
+      "name": "Is Critical?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1130, 500]
+    },
+    {
+      "parameters": {
+        "resource": "issue",
+        "operation": "create",
+        "owner": "={{ $env.GITHUB_OWNER }}",
+        "repository": "={{ $env.GITHUB_REPO }}",
+        "title": "🚨 [CRITICAL] Security Event: {{ $json.event_type }}",
+        "body": "## Critical Security Event\n\n**Audit ID:** {{ $json.audit_id }}\n**Category:** {{ $json.category }}\n**Event Type:** {{ $json.event_type }}\n\n### Details\n- **Actor:** {{ $json.actor }}\n- **Action:** {{ $json.action }}\n- **Target:** {{ $json.target || 'N/A' }}\n- **Result:** {{ $json.result }}\n- **Source:** {{ $json.source }}\n- **IP Address:** {{ $json.ip_address || 'N/A' }}\n\n### Timeline\n- **Detected:** {{ $json.created_at }}\n\n### Required Actions\n- [ ] Verify if this is a legitimate action\n- [ ] Check for related events\n- [ ] Document findings\n- [ ] Implement mitigations if needed\n\n---\n*Automated security alert from ALFA Dashboard*",
+        "labels": ["security", "critical", "audit"]
+      },
+      "id": "create-github-issue",
+      "name": "Create Security Issue",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [1350, 500],
+      "credentials": {
+        "githubApi": {
+          "id": "github-credentials",
+          "name": "GitHub API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Security Event Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Security Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Security Event": {
+      "main": [
+        [
+          {
+            "node": "Save Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Audit Log": {
+      "main": [
+        [
+          {
+            "node": "Needs Alert?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Is Critical?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Alert?": {
+      "main": [
+        [
+          {
+            "node": "Slack Security Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Critical?": {
+      "main": [
+        [
+          {
+            "node": "Create Security Issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P1-High"
+    },
+    {
+      "name": "Security"
+    },
+    {
+      "name": "Audit"
+    }
+  ]
+}

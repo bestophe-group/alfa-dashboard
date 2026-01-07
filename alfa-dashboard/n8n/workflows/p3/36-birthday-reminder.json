@@ -1,0 +1,184 @@
+{
+  "name": "P3-36 Birthday Reminder",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily 8AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": "public",
+        "table": "team_members",
+        "returnAll": true
+      },
+      "id": "fetch-team",
+      "name": "Fetch Team Members",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [470, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const members = $input.all().map(i => i.json);\nconst today = new Date();\nconst todayMonth = today.getMonth() + 1;\nconst todayDay = today.getDate();\n\nconst birthdaysToday = members.filter(m => {\n  if (!m.birthday) return false;\n  const bday = new Date(m.birthday);\n  return bday.getMonth() + 1 === todayMonth && bday.getDate() === todayDay;\n});\n\nconst upcomingBirthdays = members.filter(m => {\n  if (!m.birthday) return false;\n  const bday = new Date(m.birthday);\n  const bdayThisYear = new Date(today.getFullYear(), bday.getMonth(), bday.getDate());\n  const daysUntil = Math.ceil((bdayThisYear - today) / (1000 * 60 * 60 * 24));\n  return daysUntil > 0 && daysUntil <= 7;\n}).map(m => {\n  const bday = new Date(m.birthday);\n  const bdayThisYear = new Date(today.getFullYear(), bday.getMonth(), bday.getDate());\n  const daysUntil = Math.ceil((bdayThisYear - today) / (1000 * 60 * 60 * 24));\n  return { ...m, days_until: daysUntil };\n});\n\nreturn {\n  today: birthdaysToday,\n  upcoming: upcomingBirthdays,\n  has_birthdays_today: birthdaysToday.length > 0,\n  checked_at: today.toISOString()\n};"
+      },
+      "id": "check-birthdays",
+      "name": "Check Birthdays",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-birthday",
+              "leftValue": "={{ $json.has_birthdays_today }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-birthday",
+      "name": "Has Birthday Today?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#general",
+        "text": "🎂 Birthday Today!",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "🎂 Happy Birthday!"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "Today we celebrate:\n\n{{ $json.today.map(m => `🎉 *${m.first_name} ${m.last_name}*`).join('\\n') }}"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "Wish them a happy birthday! 🎈🎁"
+              }
+            }
+          ]
+        }
+      },
+      "id": "slack-birthday",
+      "name": "Slack Birthday",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1130, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 8AM": {
+      "main": [
+        [
+          {
+            "node": "Fetch Team Members",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Team Members": {
+      "main": [
+        [
+          {
+            "node": "Check Birthdays",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Birthdays": {
+      "main": [
+        [
+          {
+            "node": "Has Birthday Today?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Birthday Today?": {
+      "main": [
+        [
+          {
+            "node": "Slack Birthday",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P3-Low"
+    },
+    {
+      "name": "HR"
+    },
+    {
+      "name": "Team"
+    }
+  ]
+}

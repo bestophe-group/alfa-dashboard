@@ -1,0 +1,176 @@
+{
+  "name": "P3-37 Weather Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Weekdays 7AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.openweathermap.org/data/2.5/weather",
+        "options": {
+          "timeout": 15000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $env.WEATHER_CITY || 'Paris,FR' }}"
+            },
+            {
+              "name": "appid",
+              "value": "={{ $env.OPENWEATHER_API_KEY }}"
+            },
+            {
+              "name": "units",
+              "value": "metric"
+            },
+            {
+              "name": "lang",
+              "value": "fr"
+            }
+          ]
+        }
+      },
+      "id": "fetch-weather",
+      "name": "Fetch Weather",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nif (!data.main) {\n  return {\n    error: 'Weather data unavailable',\n    checked_at: new Date().toISOString()\n  };\n}\n\nconst weather = {\n  city: data.name,\n  country: data.sys?.country,\n  temp: Math.round(data.main.temp),\n  feels_like: Math.round(data.main.feels_like),\n  humidity: data.main.humidity,\n  description: data.weather?.[0]?.description || 'N/A',\n  icon: data.weather?.[0]?.icon,\n  wind_speed: data.wind?.speed,\n  clouds: data.clouds?.all,\n  sunrise: new Date(data.sys?.sunrise * 1000).toLocaleTimeString('fr-FR'),\n  sunset: new Date(data.sys?.sunset * 1000).toLocaleTimeString('fr-FR'),\n  checked_at: new Date().toISOString()\n};\n\n// Weather alerts\nconst alerts = [];\nif (weather.temp < 0) alerts.push('🥶 Températures négatives');\nif (weather.temp > 35) alerts.push('🔥 Canicule');\nif (weather.wind_speed > 50) alerts.push('💨 Vent violent');\nif (data.weather?.[0]?.main === 'Thunderstorm') alerts.push('⛈️ Orages');\nif (data.weather?.[0]?.main === 'Snow') alerts.push('❄️ Neige');\n\nconst weatherEmojis = {\n  Clear: '☀️',\n  Clouds: '☁️',\n  Rain: '🌧️',\n  Drizzle: '🌦️',\n  Thunderstorm: '⛈️',\n  Snow: '❄️',\n  Mist: '🌫️',\n  Fog: '🌫️'\n};\n\nweather.emoji = weatherEmojis[data.weather?.[0]?.main] || '🌡️';\nweather.alerts = alerts;\nweather.has_alerts = alerts.length > 0;\n\nreturn weather;"
+      },
+      "id": "process-weather",
+      "name": "Process Weather",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#general",
+        "text": "🌤️ Météo du jour",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "{{ $json.emoji }} Météo {{ $json.city }}"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Température:*\n{{ $json.temp }}°C (ressenti {{ $json.feels_like }}°C)"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Conditions:*\n{{ $json.description }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Humidité:*\n{{ $json.humidity }}%"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Vent:*\n{{ $json.wind_speed }} km/h"
+                }
+              ]
+            },
+            {
+              "type": "context",
+              "elements": [
+                {
+                  "type": "mrkdwn",
+                  "text": "🌅 {{ $json.sunrise }} | 🌇 {{ $json.sunset }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-weather",
+      "name": "Slack Weather",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [910, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Weekdays 7AM": {
+      "main": [
+        [
+          {
+            "node": "Fetch Weather",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Weather": {
+      "main": [
+        [
+          {
+            "node": "Process Weather",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Weather": {
+      "main": [
+        [
+          {
+            "node": "Slack Weather",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P3-Low"
+    },
+    {
+      "name": "Weather"
+    },
+    {
+      "name": "Info"
+    }
+  ]
+}

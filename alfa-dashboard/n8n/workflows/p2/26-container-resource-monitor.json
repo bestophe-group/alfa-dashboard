@@ -1,0 +1,216 @@
+{
+  "name": "P2-26 Container Resource Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:2375/containers/json",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "get-containers",
+      "name": "Get Docker Containers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const containers = $input.first()?.json || [];\n\nif (!Array.isArray(containers)) {\n  return {\n    error: 'Could not fetch containers',\n    timestamp: new Date().toISOString()\n  };\n}\n\nconst alfaContainers = containers.filter(c => \n  c.Names?.some(n => n.includes('alfa-')) ||\n  c.Labels?.['com.docker.compose.project'] === 'alfa-dashboard'\n);\n\nconst stats = alfaContainers.map(c => ({\n  container_id: c.Id?.substring(0, 12),\n  name: c.Names?.[0]?.replace('/', '') || 'unknown',\n  image: c.Image,\n  state: c.State,\n  status: c.Status,\n  created: c.Created,\n  ports: c.Ports?.map(p => `${p.PublicPort || p.PrivatePort}/${p.Type}`).join(', ') || 'none'\n}));\n\nconst summary = {\n  total_containers: stats.length,\n  running: stats.filter(s => s.state === 'running').length,\n  stopped: stats.filter(s => s.state !== 'running').length,\n  monitored_at: new Date().toISOString()\n};\n\nconst needsAlert = summary.stopped > 0;\n\nreturn {\n  summary,\n  containers: stats,\n  needs_alert: needsAlert,\n  stopped_containers: stats.filter(s => s.state !== 'running')\n};"
+      },
+      "id": "process-containers",
+      "name": "Process Container Stats",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "container_stats",
+        "columns": "total_containers,running,stopped,monitored_at"
+      },
+      "id": "save-stats",
+      "name": "Save Stats",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [910, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-stopped",
+              "leftValue": "={{ $json.needs_alert }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-stopped",
+      "name": "Has Stopped?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#devops",
+        "text": "🐳 Container Alert",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "🐳 Container Alert"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Running:*\n{{ $json.summary.running }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*⚠️ Stopped:*\n{{ $json.summary.stopped }}"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Stopped containers need attention!*"
+              }
+            }
+          ]
+        }
+      },
+      "id": "slack-alert",
+      "name": "Slack Container Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1350, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Docker Containers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Docker Containers": {
+      "main": [
+        [
+          {
+            "node": "Process Container Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Container Stats": {
+      "main": [
+        [
+          {
+            "node": "Save Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Stats": {
+      "main": [
+        [
+          {
+            "node": "Has Stopped?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Stopped?": {
+      "main": [
+        [
+          {
+            "node": "Slack Container Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "DevOps"
+    },
+    {
+      "name": "Docker"
+    }
+  ]
+}

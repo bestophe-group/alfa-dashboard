@@ -1,0 +1,239 @@
+{
+  "name": "P2-28 Notion Database Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 2 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/={{ $env.NOTION_PROJECTS_DB }}/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "page_size",
+              "value": "100"
+            }
+          ]
+        }
+      },
+      "id": "fetch-notion",
+      "name": "Fetch Notion Projects",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "notion-credentials",
+          "name": "Notion API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $input.first().json.results || [];\n\nconst projects = results.map(page => {\n  const props = page.properties || {};\n  \n  return {\n    notion_id: page.id,\n    title: props.Name?.title?.[0]?.plain_text || 'Untitled',\n    status: props.Status?.select?.name || 'Unknown',\n    priority: props.Priority?.select?.name || 'Medium',\n    owner: props.Owner?.people?.[0]?.name || null,\n    due_date: props['Due Date']?.date?.start || null,\n    tags: props.Tags?.multi_select?.map(t => t.name) || [],\n    url: page.url,\n    last_edited: page.last_edited_time,\n    created_at: page.created_time\n  };\n});\n\nconst summary = {\n  total_projects: projects.length,\n  by_status: {},\n  by_priority: {},\n  overdue: 0,\n  synced_at: new Date().toISOString()\n};\n\nconst now = new Date();\n\nfor (const p of projects) {\n  summary.by_status[p.status] = (summary.by_status[p.status] || 0) + 1;\n  summary.by_priority[p.priority] = (summary.by_priority[p.priority] || 0) + 1;\n  \n  if (p.due_date && new Date(p.due_date) < now && p.status !== 'Done') {\n    summary.overdue++;\n  }\n}\n\nreturn {\n  summary,\n  projects,\n  has_overdue: summary.overdue > 0\n};"
+      },
+      "id": "process-projects",
+      "name": "Process Projects",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "notion_sync_logs",
+        "columns": "total_projects,by_status,by_priority,overdue_count,synced_at"
+      },
+      "id": "save-sync",
+      "name": "Save Sync Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [910, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-overdue",
+              "leftValue": "={{ $json.has_overdue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-overdue",
+      "name": "Has Overdue?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#projects",
+        "text": "📋 Notion Projects Update",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "📋 Projects Status"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Total Projects:*\n{{ $json.summary.total_projects }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*⚠️ Overdue:*\n{{ $json.summary.overdue }}"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Some projects are overdue! Check Notion for details.*"
+              }
+            }
+          ]
+        }
+      },
+      "id": "slack-overdue",
+      "name": "Slack Overdue Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1350, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 2 Hours": {
+      "main": [
+        [
+          {
+            "node": "Fetch Notion Projects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Notion Projects": {
+      "main": [
+        [
+          {
+            "node": "Process Projects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Projects": {
+      "main": [
+        [
+          {
+            "node": "Save Sync Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Sync Log": {
+      "main": [
+        [
+          {
+            "node": "Has Overdue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Overdue?": {
+      "main": [
+        [
+          {
+            "node": "Slack Overdue Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "Notion"
+    },
+    {
+      "name": "Projects"
+    }
+  ]
+}

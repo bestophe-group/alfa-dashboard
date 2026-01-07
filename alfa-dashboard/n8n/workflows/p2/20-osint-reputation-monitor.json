@@ -1,0 +1,340 @@
+{
+  "name": "P2-20 OSINT Reputation Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily at 8AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osint/reputation",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Manual Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 500]
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": "public",
+        "table": "monitored_companies",
+        "returnAll": true
+      },
+      "id": "get-companies",
+      "name": "Get Monitored Companies",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [470, 400],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      },
+      "id": "batch-companies",
+      "name": "Batch Companies",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [690, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/customsearch/v1",
+        "options": {
+          "timeout": 15000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.company_name }} avis OR review OR scandal OR fraud OR problème"
+            },
+            {
+              "name": "key",
+              "value": "={{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "cx",
+              "value": "={{ $env.GOOGLE_CSE_ID }}"
+            },
+            {
+              "name": "dateRestrict",
+              "value": "d7"
+            },
+            {
+              "name": "num",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "id": "search-reputation",
+      "name": "Search Recent Mentions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 400],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const company = $('Batch Companies').first().json;\nconst searchResults = $input.first()?.json?.items || [];\n\n// Sentiment keywords\nconst negativeKeywords = ['scandal', 'fraud', 'problème', 'arnaque', 'plainte', 'faillite', 'liquidation', 'condamnation', 'amende'];\nconst positiveKeywords = ['récompense', 'award', 'growth', 'success', 'innovation', 'partnership'];\n\nconst mentions = searchResults.map(result => {\n  const text = `${result.title} ${result.snippet}`.toLowerCase();\n  \n  let sentiment = 'neutral';\n  const negativeCount = negativeKeywords.filter(k => text.includes(k)).length;\n  const positiveCount = positiveKeywords.filter(k => text.includes(k)).length;\n  \n  if (negativeCount > positiveCount) sentiment = 'negative';\n  else if (positiveCount > negativeCount) sentiment = 'positive';\n  \n  return {\n    title: result.title,\n    url: result.link,\n    snippet: result.snippet,\n    source: new URL(result.link).hostname,\n    sentiment,\n    negative_keywords_found: negativeKeywords.filter(k => text.includes(k)),\n    positive_keywords_found: positiveKeywords.filter(k => text.includes(k))\n  };\n});\n\nconst negativeMentions = mentions.filter(m => m.sentiment === 'negative');\nconst positiveMentions = mentions.filter(m => m.sentiment === 'positive');\n\n// Calculate reputation score (100 = perfect, 0 = very bad)\nlet reputationScore = 70; // Base score\nreputationScore -= negativeMentions.length * 10;\nreputationScore += positiveMentions.length * 5;\nreputationScore = Math.max(0, Math.min(100, reputationScore));\n\nconst needsAlert = negativeMentions.length >= 2 || reputationScore < 50;\n\nreturn {\n  company_id: company.id,\n  company_name: company.company_name,\n  \n  // Mentions analysis\n  total_mentions: mentions.length,\n  negative_mentions: negativeMentions.length,\n  positive_mentions: positiveMentions.length,\n  neutral_mentions: mentions.length - negativeMentions.length - positiveMentions.length,\n  \n  // Reputation\n  reputation_score: reputationScore,\n  previous_score: company.last_reputation_score || null,\n  score_change: company.last_reputation_score ? reputationScore - company.last_reputation_score : null,\n  \n  // Alert\n  needs_alert: needsAlert,\n  alert_reason: needsAlert ? (reputationScore < 50 ? 'Low reputation score' : 'Multiple negative mentions') : null,\n  \n  // Details\n  mentions,\n  negative_details: negativeMentions,\n  \n  // Metadata\n  analyzed_at: new Date().toISOString()\n};"
+      },
+      "id": "analyze-reputation",
+      "name": "Analyze Reputation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 400]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "reputation_logs",
+        "columns": "company_id,company_name,reputation_score,total_mentions,negative_mentions,positive_mentions,needs_alert,analyzed_at"
+      },
+      "id": "save-reputation",
+      "name": "Save Reputation Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1350, 400],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-alert",
+              "leftValue": "={{ $json.needs_alert }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "needs-alert",
+      "name": "Needs Alert?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1570, 400]
+    },
+    {
+      "parameters": {
+        "channel": "#reputation",
+        "text": "⚠️ Reputation Alert: {{ $json.company_name }}",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "⚠️ Reputation Alert"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Company:*\n{{ $json.company_name }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Reputation Score:*\n{{ $json.reputation_score }}/100"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Negative Mentions:*\n{{ $json.negative_mentions }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Alert Reason:*\n{{ $json.alert_reason }}"
+                }
+              ]
+            },
+            {
+              "type": "divider"
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Action Required:* Review negative mentions and assess potential impact."
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "📊 View Details"
+                  },
+                  "style": "primary",
+                  "value": "view_{{ $json.company_id }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-alert",
+      "name": "Slack Reputation Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1790, 400],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily at 8AM": {
+      "main": [
+        [
+          {
+            "node": "Get Monitored Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Request": {
+      "main": [
+        [
+          {
+            "node": "Get Monitored Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Monitored Companies": {
+      "main": [
+        [
+          {
+            "node": "Batch Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Companies": {
+      "main": [
+        [
+          {
+            "node": "Search Recent Mentions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Recent Mentions": {
+      "main": [
+        [
+          {
+            "node": "Analyze Reputation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Reputation": {
+      "main": [
+        [
+          {
+            "node": "Save Reputation Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Reputation Log": {
+      "main": [
+        [
+          {
+            "node": "Needs Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Alert?": {
+      "main": [
+        [
+          {
+            "node": "Slack Reputation Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "OSINT"
+    },
+    {
+      "name": "Reputation"
+    }
+  ]
+}

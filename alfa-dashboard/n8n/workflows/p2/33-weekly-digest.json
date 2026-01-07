@@ -1,0 +1,254 @@
+{
+  "name": "P2-33 Weekly Digest Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Monday 9AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": "public",
+        "table": "workflow_logs",
+        "limit": 1000,
+        "where": {
+          "conditions": [
+            {
+              "column": "executed_at",
+              "operator": "gte",
+              "value": "={{ new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() }}"
+            }
+          ]
+        }
+      },
+      "id": "fetch-workflow-logs",
+      "name": "Fetch Workflow Logs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [470, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": "public",
+        "table": "incidents",
+        "limit": 100,
+        "where": {
+          "conditions": [
+            {
+              "column": "created_at",
+              "operator": "gte",
+              "value": "={{ new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() }}"
+            }
+          ]
+        }
+      },
+      "id": "fetch-incidents",
+      "name": "Fetch Incidents",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [470, 400],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const workflowLogs = $('Fetch Workflow Logs').all().map(i => i.json);\nconst incidents = $('Fetch Incidents').all().map(i => i.json);\n\nconst now = new Date();\nconst weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);\n\n// Workflow stats\nconst workflowStats = {\n  total_executions: workflowLogs.length,\n  successful: workflowLogs.filter(l => l.status === 'success').length,\n  failed: workflowLogs.filter(l => l.status === 'error' || l.status === 'failed').length,\n  by_workflow: {}\n};\n\nfor (const log of workflowLogs) {\n  const name = log.workflow_name || 'Unknown';\n  workflowStats.by_workflow[name] = (workflowStats.by_workflow[name] || 0) + 1;\n}\n\nworkflowStats.success_rate = workflowStats.total_executions > 0 \n  ? Math.round((workflowStats.successful / workflowStats.total_executions) * 100) \n  : 100;\n\n// Incident stats\nconst incidentStats = {\n  total_incidents: incidents.length,\n  resolved: incidents.filter(i => i.status === 'resolved').length,\n  open: incidents.filter(i => i.status !== 'resolved').length,\n  by_severity: {}\n};\n\nfor (const inc of incidents) {\n  const sev = inc.severity || 'unknown';\n  incidentStats.by_severity[sev] = (incidentStats.by_severity[sev] || 0) + 1;\n}\n\n// Top 5 most active workflows\nconst topWorkflows = Object.entries(workflowStats.by_workflow)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 5)\n  .map(([name, count]) => ({ name, count }));\n\nreturn {\n  period: {\n    start: weekStart.toISOString(),\n    end: now.toISOString()\n  },\n  workflows: workflowStats,\n  incidents: incidentStats,\n  top_workflows: topWorkflows,\n  generated_at: now.toISOString()\n};"
+      },
+      "id": "compile-digest",
+      "name": "Compile Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "weekly_digests",
+        "columns": "period_start,period_end,total_executions,success_rate,total_incidents,generated_at"
+      },
+      "id": "save-digest",
+      "name": "Save Digest",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [910, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#general",
+        "text": "📊 Weekly ALFA Digest",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "📊 Weekly ALFA Digest"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Week of {{ $json.period.start.split('T')[0] }}*"
+              }
+            },
+            {
+              "type": "divider"
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*🔄 Workflow Executions*\n{{ $json.workflows.total_executions }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*✅ Success Rate*\n{{ $json.workflows.success_rate }}%"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*🚨 Incidents*\n{{ $json.incidents.total_incidents }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*✔️ Resolved*\n{{ $json.incidents.resolved }}"
+                }
+              ]
+            },
+            {
+              "type": "divider"
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Top Workflows This Week:*\n{{ $json.top_workflows.map((w, i) => `${i+1}. ${w.name}: ${w.count} runs`).join('\\n') }}"
+              }
+            }
+          ]
+        }
+      },
+      "id": "slack-digest",
+      "name": "Slack Weekly Digest",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1130, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Monday 9AM": {
+      "main": [
+        [
+          {
+            "node": "Fetch Workflow Logs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Incidents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Workflow Logs": {
+      "main": [
+        [
+          {
+            "node": "Compile Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Incidents": {
+      "main": [
+        [
+          {
+            "node": "Compile Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Digest": {
+      "main": [
+        [
+          {
+            "node": "Save Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Digest": {
+      "main": [
+        [
+          {
+            "node": "Slack Weekly Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "Reports"
+    },
+    {
+      "name": "Digest"
+    }
+  ]
+}

@@ -1,212 +1,238 @@
 # ALFA Dashboard
 
-> Plateforme unifiée de gestion DevOps avec n8n, Infisical, et Uptime Kuma
+> Self-hosted automation platform with SSO, monitoring, and auto-healing
 
-## 🎯 Vue d'ensemble
-
-ALFA Dashboard est une stack Docker complète pour la gestion DevOps, comprenant:
-
-| Service | Port | Description |
-|---------|------|-------------|
-| **Traefik** | 80/443/8080 | Reverse proxy avec SSL automatique |
-| **PostgreSQL** | 5432 | Base de données principale |
-| **Redis** | 6379 | Cache et sessions |
-| **n8n** | 5678 | Automatisation de workflows |
-| **Infisical** | 8080 | Gestion des secrets et API keys |
-| **Uptime Kuma** | 3001 | Monitoring et alertes |
-
-## 📋 Prérequis
-
-- Docker Engine 24.0+
-- Docker Compose v2.20+
-- 2GB RAM minimum (4GB recommandé)
-- 10GB d'espace disque
-
-## 🚀 Installation rapide
-
-### 1. Configuration
+## Quick Start
 
 ```bash
-# Copier le fichier d'environnement
+# 1. Configure environment
 cp .env.example .env
+# Edit .env - generate secrets with: openssl rand -base64 32
 
-# Générer des mots de passe sécurisés
-openssl rand -base64 32  # Pour POSTGRES_PASSWORD
-openssl rand -base64 32  # Pour REDIS_PASSWORD
-openssl rand -hex 32     # Pour N8N_ENCRYPTION_KEY
-openssl rand -hex 16     # Pour INFISICAL_ENCRYPTION_KEY (32 chars exactement)
-openssl rand -base64 32  # Pour INFISICAL_AUTH_SECRET
+# 2. Setup local DNS (requires sudo)
+sudo ./scripts/setup-dns.sh
 
-# Éditer les variables
-nano .env
-```
-
-### 2. Démarrage
-
-```bash
-# Démarrer les services
+# 3. Start stack
 docker compose up -d
 
-# Vérifier le statut
-docker compose ps
-
-# Lancer les tests
-./tests/test-stack.sh
+# 4. Install auto-start service (macOS)
+./scripts/install-service.sh install
 ```
 
-## 🌐 Accès aux services
+## Services
 
-### Développement local
+| Service | URL | Port |
+|---------|-----|------|
+| n8n | `https://n8n.alfa.local` | 5678 |
+| Authentik | `https://auth.alfa.local` | 9000 |
+| Uptime Kuma | `https://status.alfa.local` | 3001 |
+| Traefik | `https://traefik.alfa.local` | 80/443 |
+| PostgreSQL | Internal only | 5432 |
+| Redis | Internal only | 6379 |
 
-| Service | URL |
-|---------|-----|
-| Traefik Dashboard | http://localhost:8080 |
-| n8n | http://localhost:5678 (via container) |
-| Uptime Kuma | http://localhost:3001 (via container) |
-| Infisical | http://localhost:8080 (via container) |
-
-### Production (avec domaine)
-
-| Service | URL |
-|---------|-----|
-| n8n | https://n8n.votredomaine.com |
-| Infisical | https://secrets.votredomaine.com |
-| Uptime Kuma | https://status.votredomaine.com |
-| Traefik | https://traefik.votredomaine.com |
-
-## 🔧 Scripts utiles
-
-```bash
-# Setup initial
-./scripts/setup.sh
-
-# Vérification santé
-./scripts/health-check.sh
-
-# Backup complet
-./scripts/backup.sh
-
-# Tests
-./tests/test-stack.sh
-```
-
-## 📁 Structure du projet
-
-```
-alfa-dashboard/
-├── docker-compose.yml          # Stack principale (6 services)
-├── .env                        # Variables d'environnement
-├── .env.example               # Template de configuration
-├── traefik/
-│   ├── traefik.yml           # Configuration Traefik
-│   └── dynamic/              # Config dynamique
-├── scripts/
-│   ├── setup.sh              # Installation
-│   ├── backup.sh             # Sauvegarde
-│   └── health-check.sh       # Health check
-├── tests/
-│   ├── test-stack.sh         # Tests stack (34 tests)
-│   └── test-endpoints.sh     # Tests endpoints
-└── README.md
-```
-
-## 🔐 Sécurité
-
-### Variables sensibles à modifier
-
-```env
-POSTGRES_PASSWORD=<générer avec openssl>
-REDIS_PASSWORD=<générer avec openssl>
-N8N_ENCRYPTION_KEY=<32 caractères hex>
-INFISICAL_ENCRYPTION_KEY=<32 caractères exactement>
-INFISICAL_AUTH_SECRET=<base64>
-```
-
-### SSL en production
-
-Traefik gère automatiquement les certificats Let's Encrypt:
-
-```env
-DOMAIN=votredomaine.com
-ACME_EMAIL=admin@votredomaine.com
-```
-
-## 🛠️ Maintenance
-
-```bash
-# Logs
-docker compose logs -f [service]
-
-# Redémarrer un service
-docker compose restart [service]
-
-# Mise à jour
-docker compose pull && docker compose up -d
-
-# Arrêt
-docker compose down
-
-# Arrêt + suppression données
-docker compose down -v  # ⚠️ Destructif!
-```
-
-## 🧪 Tests
-
-```bash
-# 34 tests automatisés
-./tests/test-stack.sh
-
-# Vérifie:
-# - Syntaxe Docker Compose
-# - Fichiers de configuration
-# - Volumes et networks
-# - Healthchecks
-# - Containers running
-# - Services healthy
-# - Endpoints répondent
-```
-
-## 📊 Architecture
+## Stack Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                      TRAEFIK                            │
-│              (Reverse Proxy + SSL)                      │
-│                   :80 :443 :8080                        │
-└───────────────────────┬─────────────────────────────────┘
-                        │
-        ┌───────────────┼───────────────┐
-        │               │               │
-        ▼               ▼               ▼
-   ┌─────────┐    ┌─────────┐    ┌─────────┐
-   │   n8n   │    │Infisical│    │ Uptime  │
-   │  :5678  │    │  :8080  │    │  Kuma   │
-   └────┬────┘    └────┬────┘    │  :3001  │
-        │              │         └─────────┘
-        │              │
-        ▼              ▼
-   ┌──────────────────────┐
-   │      PostgreSQL      │
-   │        :5432         │
-   └──────────┬───────────┘
-              │
-        ┌─────┴─────┐
-        │   Redis   │
-        │   :6379   │
-        └───────────┘
+│                     Internet/Client                      │
+└────────────────────────────┬────────────────────────────┘
+                             │
+┌────────────────────────────▼────────────────────────────┐
+│               Traefik (Reverse Proxy)                    │
+│         TLS termination, routing, load balancing         │
+└────────────────────────────┬────────────────────────────┘
+                             │
+┌────────────────────────────▼────────────────────────────┐
+│               Authentik (SSO/Identity)                   │
+│           OpenID Connect, SAML, Forward Auth             │
+└────────────────────────────┬────────────────────────────┘
+                             │
+┌─────────────┬──────────────┼──────────────┬─────────────┐
+│             │              │              │             │
+▼             ▼              ▼              ▼             │
+┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────────┐       │
+│   n8n   │ │ Uptime  │ │ Future  │ │   Future    │       │
+│Workflows│ │  Kuma   │ │ Service │ │   Service   │       │
+└────┬────┘ └─────────┘ └─────────┘ └─────────────┘       │
+     │                                                     │
+┌────▼───────────────────────────────────────────────────┐│
+│                     PostgreSQL                          ││
+│                    (Databases)                          ││
+├─────────────────────────────────────────────────────────┤│
+│                       Redis                             ││
+│                  (Cache/Queue)                          ││
+└─────────────────────────────────────────────────────────┘│
 ```
 
-## 📚 Documentation
+## Scripts
 
-- [n8n](https://docs.n8n.io)
-- [Infisical](https://infisical.com/docs)
-- [Uptime Kuma](https://github.com/louislam/uptime-kuma)
-- [Traefik](https://doc.traefik.io/traefik/)
+### DNS Setup
 
-## 📝 License
+```bash
+# Configure /etc/hosts for local development
+sudo ./scripts/setup-dns.sh
 
-MIT
+# Custom domain
+sudo ALFA_DOMAIN=mycompany.local ./scripts/setup-dns.sh
+```
+
+### Watchdog (Service Monitor)
+
+```bash
+# Check status
+./scripts/alfa-watchdog.sh status
+
+# Run health check
+./scripts/alfa-watchdog.sh check
+
+# Start daemon (runs every 30s)
+./scripts/alfa-watchdog.sh daemon 30
+
+# View logs
+./scripts/alfa-watchdog.sh logs
+```
+
+### Service Management (macOS)
+
+```bash
+# Install auto-start
+./scripts/install-service.sh install
+
+# Other commands
+./scripts/install-service.sh start
+./scripts/install-service.sh stop
+./scripts/install-service.sh restart
+./scripts/install-service.sh status
+./scripts/install-service.sh uninstall
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DOMAIN` | Base domain | `alfa.local` |
+| `ACME_EMAIL` | Let's Encrypt email | `admin@alfa.local` |
+| `POSTGRES_USER` | Database user | `alfa` |
+| `POSTGRES_PASSWORD` | Database password | *required* |
+| `REDIS_PASSWORD` | Redis password | *required* |
+| `AUTHENTIK_SECRET_KEY` | Authentik secret | *required* |
+| `N8N_JWT_SECRET` | n8n JWT secret | *required* |
+
+### Generate Secrets
+
+```bash
+# Standard secret (32 chars)
+openssl rand -base64 32
+
+# Long secret for Authentik (60 chars)
+openssl rand -base64 60
+```
+
+## Development
+
+### Local Override
+
+Create `docker-compose.override.yml`:
+
+```yaml
+services:
+  n8n:
+    environment:
+      - N8N_LOG_LEVEL=debug
+    ports:
+      - "5678:5678"  # Direct access
+```
+
+### View Logs
+
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f n8n
+
+# Last 100 lines
+docker compose logs --tail=100 n8n
+```
+
+### Database Access
+
+```bash
+# Connect to PostgreSQL
+docker exec -it alfa-postgres psql -U alfa
+
+# List databases
+docker exec alfa-postgres psql -U alfa -c '\l'
+
+# Run query
+docker exec alfa-postgres psql -U alfa -d n8n -c 'SELECT * FROM workflow_entity;'
+```
+
+## Initial Setup
+
+### Authentik (SSO)
+
+1. Access `https://auth.alfa.local`
+2. Create recovery key:
+   ```bash
+   docker exec -it alfa-authentik ak create_recovery_key 10 admin
+   ```
+3. Use recovery key to set admin password
+4. Configure applications for SSO
+
+### n8n
+
+1. Access `https://n8n.alfa.local`
+2. Create owner account
+3. Import workflows from `n8n/workflows/`
+
+### Uptime Kuma
+
+1. Access `https://status.alfa.local`
+2. Create admin account
+3. Add monitors for all services
+
+## Volumes
+
+| Volume | Purpose | Backup Priority |
+|--------|---------|-----------------|
+| `alfa-postgres-data` | Database | Critical |
+| `alfa-redis-data` | Cache | Low |
+| `alfa-n8n-data` | Workflows | High |
+| `alfa-uptime-kuma-data` | Monitors | Medium |
+| `alfa-traefik-certs` | SSL certs | Medium |
+| `alfa-authentik-*` | SSO data | High |
+
+## Troubleshooting
+
+### Service won't start
+
+```bash
+# Check logs
+docker logs alfa-<service>
+
+# Check dependencies
+docker compose ps
+
+# Recreate service
+docker compose up -d --force-recreate <service>
+```
+
+### Database not found
+
+```bash
+# Create missing database
+docker exec alfa-postgres psql -U alfa -c 'CREATE DATABASE n8n;'
+docker exec alfa-postgres psql -U alfa -c 'CREATE DATABASE authentik;'
+```
+
+### SSL issues
+
+For local development, accept self-signed certs or use HTTP.
 
 ---
 
-**ALFA Dashboard v1.0.0** - Stack fonctionnelle avec 6 services et 34 tests passants.
+Part of the [ALFA Method](../README.md) for foolproof automation.

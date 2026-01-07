@@ -1,0 +1,219 @@
+{
+  "name": "P0-02 Token Budget Guardian",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.anthropic.com/v1/usage",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-anthropic-usage",
+      "name": "Fetch Anthropic Usage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const usage = $input.first().json;\nconst monthlyBudget = Number($env.ANTHROPIC_MONTHLY_BUDGET) || 1000;\nconst currentSpend = usage.total_cost || 0;\nconst percentUsed = (currentSpend / monthlyBudget) * 100;\n\nconst now = new Date();\nconst daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();\nconst dayOfMonth = now.getDate();\nconst expectedPercent = (dayOfMonth / daysInMonth) * 100;\nconst burnRate = currentSpend / dayOfMonth;\nconst projectedTotal = burnRate * daysInMonth;\n\nreturn {\n  current_spend: currentSpend,\n  monthly_budget: monthlyBudget,\n  percent_used: Math.round(percentUsed * 100) / 100,\n  expected_percent: Math.round(expectedPercent * 100) / 100,\n  burn_rate_daily: Math.round(burnRate * 100) / 100,\n  projected_total: Math.round(projectedTotal * 100) / 100,\n  over_budget: percentUsed > expectedPercent,\n  alert_level: percentUsed >= 95 ? 'critical' : percentUsed >= 80 ? 'warning' : 'normal',\n  tokens_input: usage.input_tokens || 0,\n  tokens_output: usage.output_tokens || 0,\n  timestamp: now.toISOString()\n};"
+      },
+      "id": "calculate-budget",
+      "name": "Calculate Budget",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "token_usage_log",
+        "columns": "current_spend,monthly_budget,percent_used,burn_rate_daily,projected_total,tokens_input,tokens_output,alert_level,recorded_at",
+        "values": "={{ $json.current_spend }},={{ $json.monthly_budget }},={{ $json.percent_used }},={{ $json.burn_rate_daily }},={{ $json.projected_total }},={{ $json.tokens_input }},={{ $json.tokens_output }},={{ $json.alert_level }},={{ $json.timestamp }}"
+      },
+      "id": "log-to-db",
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [910, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-warning",
+              "leftValue": "={{ $json.alert_level }}",
+              "rightValue": "normal",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-threshold",
+      "name": "Check Threshold",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#alerts-budget",
+        "text": "={{ $json.alert_level === 'critical' ? '🚨 CRITICAL' : '⚠️ WARNING' }} Token Budget Alert",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "{{ $json.alert_level === 'critical' ? '🚨' : '⚠️' }} *Token Budget {{ $json.alert_level.toUpperCase() }}*\n\n*Current Spend:* ${{ $json.current_spend.toFixed(2) }} / ${{ $json.monthly_budget }}\n*Percent Used:* {{ $json.percent_used }}% (expected: {{ $json.expected_percent }}%)\n*Daily Burn Rate:* ${{ $json.burn_rate_daily }}/day\n*Projected Total:* ${{ $json.projected_total.toFixed(2) }}"
+              }
+            },
+            {
+              "type": "context",
+              "elements": [
+                {
+                  "type": "mrkdwn",
+                  "text": "Input tokens: {{ $json.tokens_input.toLocaleString() }} | Output tokens: {{ $json.tokens_output.toLocaleString() }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-alert",
+      "name": "Slack Budget Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1350, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Fetch Anthropic Usage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Anthropic Usage": {
+      "main": [
+        [
+          {
+            "node": "Calculate Budget",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Budget": {
+      "main": [
+        [
+          {
+            "node": "Log to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Check Threshold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Threshold": {
+      "main": [
+        [
+          {
+            "node": "Slack Budget Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "P0-Critical"
+    },
+    {
+      "name": "Monitoring"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2026-01-07T01:00:00.000Z",
+  "versionId": "1"
+}

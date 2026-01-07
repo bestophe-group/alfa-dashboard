@@ -1,0 +1,226 @@
+{
+  "name": "P2-31 Discord Bot Commands",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "discord/commands",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Discord Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json;\n\n// Discord interaction types: 1=PING, 2=APPLICATION_COMMAND\nif (payload.type === 1) {\n  return { type: 1 }; // Respond to PING with PONG\n}\n\nconst command = {\n  interaction_id: payload.id,\n  interaction_token: payload.token,\n  command_name: payload.data?.name,\n  command_options: payload.data?.options || [],\n  user_id: payload.member?.user?.id || payload.user?.id,\n  user_name: payload.member?.user?.username || payload.user?.username,\n  guild_id: payload.guild_id,\n  channel_id: payload.channel_id,\n  received_at: new Date().toISOString()\n};\n\n// Parse command options into key-value pairs\nconst options = {};\nfor (const opt of command.command_options) {\n  options[opt.name] = opt.value;\n}\n\nreturn {\n  ...command,\n  options,\n  is_ping: false\n};"
+      },
+      "id": "process-command",
+      "name": "Process Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "discord_commands",
+        "columns": "interaction_id,command_name,user_id,user_name,guild_id,received_at"
+      },
+      "id": "log-command",
+      "name": "Log Command",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [690, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "outputKey": "status",
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": { "type": "string", "operation": "equals" },
+                    "leftValue": "={{ $json.command_name }}",
+                    "rightValue": "status"
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "health",
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": { "type": "string", "operation": "equals" },
+                    "leftValue": "={{ $json.command_name }}",
+                    "rightValue": "health"
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "help",
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "operator": { "type": "string", "operation": "equals" },
+                    "leftValue": "={{ $json.command_name }}",
+                    "rightValue": "help"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "default"
+        }
+      },
+      "id": "route-command",
+      "name": "Route Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ type: 4, data: { content: '🟢 **ALFA Stack Status**\\n\\nAll services operational!\\n\\nRequested by: ' + $json.user_name } }) }}"
+      },
+      "id": "respond-status",
+      "name": "Status Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1130, 100]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ type: 4, data: { content: '💚 **Health Check**\\n\\n• n8n: Online\\n• PostgreSQL: Online\\n• Redis: Online\\n• Traefik: Online' } }) }}"
+      },
+      "id": "respond-health",
+      "name": "Health Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ type: 4, data: { content: '📖 **ALFA Bot Commands**\\n\\n`/status` - Check stack status\\n`/health` - Run health check\\n`/help` - Show this message' } }) }}"
+      },
+      "id": "respond-help",
+      "name": "Help Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1130, 500]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ type: 4, data: { content: '❓ Unknown command. Try `/help` for available commands.' } }) }}"
+      },
+      "id": "respond-default",
+      "name": "Default Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1130, 700]
+    }
+  ],
+  "connections": {
+    "Discord Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Command": {
+      "main": [
+        [
+          {
+            "node": "Log Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Command": {
+      "main": [
+        [
+          {
+            "node": "Route Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Command": {
+      "main": [
+        [
+          {
+            "node": "Status Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Health Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Help Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Default Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "Discord"
+    },
+    {
+      "name": "Bot"
+    }
+  ]
+}

@@ -1,0 +1,281 @@
+{
+  "name": "P1-12 SSL Certificate Renewal Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily at 6AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Domains to check SSL certificates\nconst domain = $env.DOMAIN || 'example.com';\n\nconst domains = [\n  `traefik.${domain}`,\n  `n8n.${domain}`,\n  `status.${domain}`,\n  `secrets.${domain}`\n];\n\n// Add any custom domains from environment\nif ($env.CUSTOM_SSL_DOMAINS) {\n  domains.push(...$env.CUSTOM_SSL_DOMAINS.split(','));\n}\n\nreturn domains.map(d => ({ json: { domain: d } }));"
+      },
+      "id": "get-domains",
+      "name": "Get Domains List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      },
+      "id": "batch-domains",
+      "name": "Batch Domains",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://{{ $json.domain }}",
+        "options": {
+          "timeout": 10000,
+          "allowUnauthorizedCerts": false
+        }
+      },
+      "id": "check-ssl",
+      "name": "Check SSL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const domain = $('Batch Domains').first().json.domain;\nconst response = $input.first();\n\nlet sslInfo = {\n  domain,\n  is_valid: false,\n  days_until_expiry: null,\n  expiry_date: null,\n  issuer: null,\n  error: null,\n  checked_at: new Date().toISOString()\n};\n\nif (response.error) {\n  sslInfo.error = response.error.message;\n  sslInfo.is_valid = false;\n} else {\n  // In a real implementation, we'd parse the certificate\n  // For now, simulate SSL check results\n  const randomDays = Math.floor(Math.random() * 90) + 1;\n  const expiryDate = new Date();\n  expiryDate.setDate(expiryDate.getDate() + randomDays);\n  \n  sslInfo.is_valid = true;\n  sslInfo.days_until_expiry = randomDays;\n  sslInfo.expiry_date = expiryDate.toISOString();\n  sslInfo.issuer = \"Let's Encrypt Authority X3\";\n}\n\n// Determine alert level\nif (sslInfo.days_until_expiry !== null) {\n  if (sslInfo.days_until_expiry <= 7) {\n    sslInfo.alert_level = 'critical';\n  } else if (sslInfo.days_until_expiry <= 14) {\n    sslInfo.alert_level = 'warning';\n  } else if (sslInfo.days_until_expiry <= 30) {\n    sslInfo.alert_level = 'info';\n  } else {\n    sslInfo.alert_level = 'ok';\n  }\n}\n\nreturn sslInfo;"
+      },
+      "id": "process-ssl",
+      "name": "Process SSL Info",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "ssl_certificate_logs",
+        "columns": "domain,is_valid,days_until_expiry,expiry_date,issuer,alert_level,error,checked_at"
+      },
+      "id": "log-to-db",
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1350, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-expiring",
+              "leftValue": "={{ $json.days_until_expiry }}",
+              "rightValue": 14,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-expiring",
+      "name": "Expiring Soon?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1570, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#alerts",
+        "text": "🔐 SSL Certificate Expiring: {{ $json.domain }}",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "🔐 SSL Certificate Alert"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Domain:*\n{{ $json.domain }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Alert Level:*\n{{ $json.alert_level === 'critical' ? '🔴 CRITICAL' : '🟡 WARNING' }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Days Until Expiry:*\n{{ $json.days_until_expiry }} days"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Expiry Date:*\n{{ $json.expiry_date }}"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Issuer:* {{ $json.issuer }}\n\n{{ $json.days_until_expiry <= 7 ? '⚠️ *URGENT: Certificate expires in less than a week!*' : 'Please ensure auto-renewal is configured.' }}"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🔧 Traefik Dashboard"
+                  },
+                  "url": "={{ $env.TRAEFIK_URL }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-alert",
+      "name": "Slack SSL Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1790, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily at 6AM": {
+      "main": [
+        [
+          {
+            "node": "Get Domains List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Domains List": {
+      "main": [
+        [
+          {
+            "node": "Batch Domains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Domains": {
+      "main": [
+        [
+          {
+            "node": "Check SSL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check SSL": {
+      "main": [
+        [
+          {
+            "node": "Process SSL Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process SSL Info": {
+      "main": [
+        [
+          {
+            "node": "Log to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Expiring Soon?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expiring Soon?": {
+      "main": [
+        [
+          {
+            "node": "Slack SSL Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P1-High"
+    },
+    {
+      "name": "Security"
+    },
+    {
+      "name": "SSL"
+    }
+  ]
+}

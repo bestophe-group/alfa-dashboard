@@ -1,0 +1,304 @@
+{
+  "name": "P1-14 Commit Validation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github-commit",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "GitHub Push Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json;\n\n// Extract commit information from GitHub webhook\nconst commits = payload.commits || [];\nconst repository = payload.repository?.full_name || 'unknown';\nconst branch = payload.ref?.replace('refs/heads/', '') || 'unknown';\nconst pusher = payload.pusher?.name || 'unknown';\n\n// Validation rules\nconst validationRules = {\n  commitMessage: {\n    minLength: 10,\n    maxLength: 72,\n    patterns: [\n      { regex: /^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\\(.+\\))?:\\s.+/, name: 'Conventional Commits' },\n      { regex: /^\\[.+\\]\\s.+/, name: 'Bracket Prefix' }\n    ]\n  },\n  files: {\n    forbidden: ['.env', 'secrets.json', '*.key', '*.pem'],\n    requireReview: ['package.json', 'docker-compose.yml', 'Dockerfile']\n  }\n};\n\nconst validationResults = [];\n\nfor (const commit of commits) {\n  const issues = [];\n  const warnings = [];\n  \n  // Check commit message length\n  if (commit.message.length < validationRules.commitMessage.minLength) {\n    issues.push(`Message too short (${commit.message.length} chars, min ${validationRules.commitMessage.minLength})`);\n  }\n  if (commit.message.split('\\n')[0].length > validationRules.commitMessage.maxLength) {\n    warnings.push(`First line exceeds ${validationRules.commitMessage.maxLength} chars`);\n  }\n  \n  // Check commit message format\n  const hasValidFormat = validationRules.commitMessage.patterns.some(p => p.regex.test(commit.message));\n  if (!hasValidFormat) {\n    issues.push('Message does not follow conventional commits format');\n  }\n  \n  // Check for forbidden files\n  const allFiles = [...(commit.added || []), ...(commit.modified || [])];\n  for (const file of allFiles) {\n    for (const forbidden of validationRules.files.forbidden) {\n      if (forbidden.includes('*')) {\n        const pattern = forbidden.replace('*', '.*');\n        if (new RegExp(pattern).test(file)) {\n          issues.push(`Forbidden file pattern detected: ${file}`);\n        }\n      } else if (file === forbidden || file.endsWith(`/${forbidden}`)) {\n        issues.push(`Forbidden file detected: ${file}`);\n      }\n    }\n    \n    // Check files requiring review\n    if (validationRules.files.requireReview.some(r => file.includes(r))) {\n      warnings.push(`File requires careful review: ${file}`);\n    }\n  }\n  \n  validationResults.push({\n    sha: commit.id,\n    message: commit.message.split('\\n')[0],\n    author: commit.author?.name || 'unknown',\n    timestamp: commit.timestamp,\n    files_changed: allFiles.length,\n    issues,\n    warnings,\n    is_valid: issues.length === 0\n  });\n}\n\nconst hasIssues = validationResults.some(r => !r.is_valid);\nconst hasWarnings = validationResults.some(r => r.warnings.length > 0);\n\nreturn {\n  repository,\n  branch,\n  pusher,\n  commit_count: commits.length,\n  validation_status: hasIssues ? 'failed' : hasWarnings ? 'warning' : 'passed',\n  commits: validationResults,\n  validated_at: new Date().toISOString()\n};"
+      },
+      "id": "validate-commits",
+      "name": "Validate Commits",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "commit_validations",
+        "columns": "repository,branch,pusher,commit_count,validation_status,validated_at"
+      },
+      "id": "log-validation",
+      "name": "Log Validation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [690, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-failed",
+              "leftValue": "={{ $json.validation_status }}",
+              "rightValue": "failed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-failed",
+      "name": "Has Issues?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [910, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-warning",
+              "leftValue": "={{ $json.validation_status }}",
+              "rightValue": "warning",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-warning",
+      "name": "Has Warnings?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [910, 400]
+    },
+    {
+      "parameters": {
+        "channel": "#dev-alerts",
+        "text": "🔴 Commit Validation Failed",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "🔴 Commit Validation Failed"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Repository:*\n{{ $json.repository }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Branch:*\n{{ $json.branch }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Pusher:*\n{{ $json.pusher }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Commits:*\n{{ $json.commit_count }}"
+                }
+              ]
+            },
+            {
+              "type": "divider"
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Issues Found:*\nPlease review and fix the commit messages or files."
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "View Repository"
+                  },
+                  "url": "https://github.com/{{ $json.repository }}"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-failure",
+      "name": "Slack Failure Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1130, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#dev-alerts",
+        "text": "🟡 Commit Validation Warning",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "🟡 Commit Validation Warning"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Repository:*\n{{ $json.repository }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Branch:*\n{{ $json.branch }}"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Warnings:*\nSome files require careful review before merging."
+              }
+            }
+          ]
+        }
+      },
+      "id": "slack-warning",
+      "name": "Slack Warning",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1130, 400],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "GitHub Push Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Commits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Commits": {
+      "main": [
+        [
+          {
+            "node": "Log Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Validation": {
+      "main": [
+        [
+          {
+            "node": "Has Issues?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Has Warnings?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Issues?": {
+      "main": [
+        [
+          {
+            "node": "Slack Failure Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Warnings?": {
+      "main": [
+        [
+          {
+            "node": "Slack Warning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P1-High"
+    },
+    {
+      "name": "DevOps"
+    },
+    {
+      "name": "Git"
+    }
+  ]
+}

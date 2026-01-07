@@ -1,0 +1,204 @@
+{
+  "name": "P2-35 Log Aggregator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "logs/ingest",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Log Ingestion",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json;\n\n// Support batch or single log entries\nconst entries = Array.isArray(payload.logs) ? payload.logs : [payload];\n\nconst processedLogs = entries.map(log => ({\n  log_id: `LOG-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,\n  timestamp: log.timestamp || new Date().toISOString(),\n  level: (log.level || 'info').toLowerCase(),\n  service: log.service || log.source || 'unknown',\n  message: log.message || log.msg || '',\n  context: JSON.stringify(log.context || log.metadata || {}),\n  trace_id: log.trace_id || log.traceId || null,\n  span_id: log.span_id || log.spanId || null,\n  user_id: log.user_id || log.userId || null,\n  environment: log.environment || log.env || 'production',\n  host: log.host || log.hostname || null,\n  ingested_at: new Date().toISOString()\n}));\n\nconst summary = {\n  total_logs: processedLogs.length,\n  by_level: {},\n  by_service: {},\n  errors_count: 0\n};\n\nfor (const log of processedLogs) {\n  summary.by_level[log.level] = (summary.by_level[log.level] || 0) + 1;\n  summary.by_service[log.service] = (summary.by_service[log.service] || 0) + 1;\n  if (['error', 'fatal', 'critical'].includes(log.level)) {\n    summary.errors_count++;\n  }\n}\n\nreturn {\n  summary,\n  logs: processedLogs,\n  has_errors: summary.errors_count > 0\n};"
+      },
+      "id": "process-logs",
+      "name": "Process Logs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "logs",
+        "columns": "log_id,timestamp,level,service,message,context,trace_id,environment,ingested_at",
+        "options": {
+          "queryBatching": "individually"
+        }
+      },
+      "id": "save-logs",
+      "name": "Save Logs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [690, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-errors",
+              "leftValue": "={{ $json.has_errors }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-errors",
+      "name": "Has Errors?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [910, 200]
+    },
+    {
+      "parameters": {
+        "channel": "#logs",
+        "text": "🔴 Error Logs Detected",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "🔴 Error Logs Ingested"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Total Logs:*\n{{ $json.summary.total_logs }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Errors:*\n{{ $json.summary.errors_count }}"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Services affected:*\n{{ Object.keys($json.summary.by_service).join(', ') }}"
+              }
+            }
+          ]
+        }
+      },
+      "id": "slack-errors",
+      "name": "Slack Error Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1130, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, ingested: $('Process Logs').item.json.summary.total_logs, errors: $('Process Logs').item.json.summary.errors_count }) }}"
+      },
+      "id": "respond-success",
+      "name": "Return Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [910, 400]
+    }
+  ],
+  "connections": {
+    "Log Ingestion": {
+      "main": [
+        [
+          {
+            "node": "Process Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Logs": {
+      "main": [
+        [
+          {
+            "node": "Save Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Logs": {
+      "main": [
+        [
+          {
+            "node": "Has Errors?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Return Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Errors?": {
+      "main": [
+        [
+          {
+            "node": "Slack Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "Logs"
+    },
+    {
+      "name": "Observability"
+    }
+  ]
+}

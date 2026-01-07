@@ -1,0 +1,247 @@
+{
+  "name": "P2-16 OSINT Company Scraper",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "osint/company",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Company Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $input.first().json;\n\nconst companyName = request.company_name;\nconst siret = request.siret || null;\nconst country = request.country || 'FR';\n\n// Generate research ID\nconst researchId = `OSINT-${Date.now()}`;\n\n// Define data sources to query\nconst sources = [\n  { name: 'Pappers', type: 'registry', enabled: country === 'FR' },\n  { name: 'Societe.com', type: 'registry', enabled: country === 'FR' },\n  { name: 'LinkedIn', type: 'social', enabled: true },\n  { name: 'Google', type: 'search', enabled: true },\n  { name: 'WHOIS', type: 'dns', enabled: true },\n  { name: 'Crunchbase', type: 'business', enabled: true }\n];\n\nreturn {\n  research_id: researchId,\n  company_name: companyName,\n  siret,\n  country,\n  sources: sources.filter(s => s.enabled),\n  requested_by: request.requested_by || 'api',\n  started_at: new Date().toISOString()\n};"
+      },
+      "id": "prepare-research",
+      "name": "Prepare Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "osint_research",
+        "columns": "research_id,company_name,siret,country,status,requested_by,started_at"
+      },
+      "id": "create-research",
+      "name": "Create Research Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [690, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.pappers.fr/v2/entreprise",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "options": {
+          "timeout": 30000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "siret",
+              "value": "={{ $('Prepare Research').item.json.siret }}"
+            }
+          ]
+        }
+      },
+      "id": "fetch-pappers",
+      "name": "Fetch Pappers Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 200],
+      "continueOnFail": true,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "pappers-credentials",
+          "name": "Pappers API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/customsearch/v1",
+        "options": {
+          "timeout": 15000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Prepare Research').item.json.company_name }}"
+            },
+            {
+              "name": "key",
+              "value": "={{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "cx",
+              "value": "={{ $env.GOOGLE_CSE_ID }}"
+            }
+          ]
+        }
+      },
+      "id": "fetch-google",
+      "name": "Google Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 400],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const researchId = $('Prepare Research').first().json.research_id;\nconst companyName = $('Prepare Research').first().json.company_name;\n\n// Get results from different sources\nconst pappersData = $('Fetch Pappers Data').first()?.json || {};\nconst googleData = $('Google Search').first()?.json || {};\n\n// Compile company profile\nconst profile = {\n  research_id: researchId,\n  company_name: companyName,\n  \n  // Legal info from Pappers\n  legal_name: pappersData.nom_entreprise || null,\n  siret: pappersData.siret || null,\n  siren: pappersData.siren || null,\n  legal_form: pappersData.forme_juridique || null,\n  capital: pappersData.capital || null,\n  creation_date: pappersData.date_creation || null,\n  naf_code: pappersData.code_naf || null,\n  naf_label: pappersData.libelle_code_naf || null,\n  \n  // Address\n  address: pappersData.siege?.adresse_ligne_1 || null,\n  postal_code: pappersData.siege?.code_postal || null,\n  city: pappersData.siege?.ville || null,\n  \n  // Directors\n  directors: pappersData.representants?.map(r => ({\n    name: `${r.prenom || ''} ${r.nom || ''}`.trim(),\n    role: r.qualite || 'Unknown',\n    birth_date: r.date_naissance || null\n  })) || [],\n  \n  // Financial data\n  revenue: pappersData.chiffre_affaires || null,\n  employees: pappersData.effectif || null,\n  \n  // Web presence from Google\n  web_results: googleData.items?.slice(0, 5).map(item => ({\n    title: item.title,\n    url: item.link,\n    snippet: item.snippet\n  })) || [],\n  \n  // Metadata\n  data_sources: ['Pappers', 'Google'],\n  compiled_at: new Date().toISOString()\n};\n\nreturn profile;"
+      },
+      "id": "compile-profile",
+      "name": "Compile Company Profile",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": "public",
+        "table": "osint_research",
+        "columns": "status,profile_data,completed_at",
+        "updateKey": "research_id"
+      },
+      "id": "save-profile",
+      "name": "Save Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1350, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Return Profile",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1570, 300]
+    }
+  ],
+  "connections": {
+    "Company Request": {
+      "main": [
+        [
+          {
+            "node": "Prepare Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Research": {
+      "main": [
+        [
+          {
+            "node": "Create Research Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Research Record": {
+      "main": [
+        [
+          {
+            "node": "Fetch Pappers Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Pappers Data": {
+      "main": [
+        [
+          {
+            "node": "Compile Company Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Search": {
+      "main": [
+        [
+          {
+            "node": "Compile Company Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Company Profile": {
+      "main": [
+        [
+          {
+            "node": "Save Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Profile": {
+      "main": [
+        [
+          {
+            "node": "Return Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "OSINT"
+    },
+    {
+      "name": "Scraping"
+    }
+  ]
+}

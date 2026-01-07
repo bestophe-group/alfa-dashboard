@@ -1,0 +1,199 @@
+{
+  "name": "P2-23 PayFit Employee Export",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Monday 8AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.payfit.com/v1/employees",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fetch-employees",
+      "name": "Fetch PayFit Employees",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "payfit-credentials",
+          "name": "PayFit API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const employees = $input.first().json.employees || $input.first().json.data || [];\n\nconst processed = employees.map(emp => ({\n  employee_id: emp.id,\n  first_name: emp.first_name || emp.firstName,\n  last_name: emp.last_name || emp.lastName,\n  email: emp.email,\n  job_title: emp.job_title || emp.jobTitle || emp.position,\n  department: emp.department,\n  start_date: emp.start_date || emp.startDate,\n  contract_type: emp.contract_type || emp.contractType,\n  is_active: emp.status === 'active' || emp.isActive === true,\n  manager_id: emp.manager_id || emp.managerId\n}));\n\nconst summary = {\n  total_employees: processed.length,\n  active_employees: processed.filter(e => e.is_active).length,\n  by_department: {},\n  by_contract_type: {},\n  exported_at: new Date().toISOString()\n};\n\n// Group by department\nfor (const emp of processed) {\n  const dept = emp.department || 'Unassigned';\n  summary.by_department[dept] = (summary.by_department[dept] || 0) + 1;\n}\n\n// Group by contract type\nfor (const emp of processed) {\n  const type = emp.contract_type || 'Unknown';\n  summary.by_contract_type[type] = (summary.by_contract_type[type] || 0) + 1;\n}\n\nreturn {\n  summary,\n  employees: processed\n};"
+      },
+      "id": "process-employees",
+      "name": "Process Employees",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "payfit_employee_snapshots",
+        "columns": "total_employees,active_employees,department_breakdown,contract_breakdown,exported_at"
+      },
+      "id": "save-snapshot",
+      "name": "Save Snapshot",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [910, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#rh",
+        "text": "👥 PayFit Weekly Export",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "👥 PayFit Employee Report"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Total Employees:*\n{{ $json.summary.total_employees }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Active:*\n{{ $json.summary.active_employees }}"
+                }
+              ]
+            },
+            {
+              "type": "divider"
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Exported:* {{ $json.summary.exported_at }}"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "📊 Open PayFit"
+                  },
+                  "url": "https://app.payfit.com"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-report",
+      "name": "Slack RH Report",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1130, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Monday 8AM": {
+      "main": [
+        [
+          {
+            "node": "Fetch PayFit Employees",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch PayFit Employees": {
+      "main": [
+        [
+          {
+            "node": "Process Employees",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Employees": {
+      "main": [
+        [
+          {
+            "node": "Save Snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Snapshot": {
+      "main": [
+        [
+          {
+            "node": "Slack RH Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "RH"
+    },
+    {
+      "name": "PayFit"
+    }
+  ]
+}

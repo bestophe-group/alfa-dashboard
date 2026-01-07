@@ -1,0 +1,214 @@
+{
+  "name": "P2-34 API Rate Limiter",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ratelimit/check",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Rate Limit Check",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $input.first().json;\n\nconst clientId = request.client_id || request.api_key || request.ip;\nconst endpoint = request.endpoint || 'default';\nconst windowMinutes = request.window_minutes || 60;\nconst maxRequests = request.max_requests || 100;\n\nif (!clientId) {\n  return {\n    error: 'Missing client_id, api_key, or ip',\n    allowed: false\n  };\n}\n\nreturn {\n  client_id: clientId,\n  endpoint: endpoint,\n  window_minutes: windowMinutes,\n  max_requests: maxRequests,\n  window_start: new Date(Date.now() - windowMinutes * 60 * 1000).toISOString(),\n  checked_at: new Date().toISOString()\n};"
+      },
+      "id": "prepare-check",
+      "name": "Prepare Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": "public",
+        "table": "api_requests",
+        "returnAll": false,
+        "limit": 1,
+        "options": {
+          "queryRaw": true
+        },
+        "query": "SELECT COUNT(*) as request_count FROM api_requests WHERE client_id = '{{ $json.client_id }}' AND endpoint = '{{ $json.endpoint }}' AND created_at > '{{ $json.window_start }}'"
+      },
+      "id": "count-requests",
+      "name": "Count Requests",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [690, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Prepare Check').first().json;\nconst countResult = $input.first().json;\n\nconst currentCount = parseInt(countResult.request_count || 0);\nconst remaining = Math.max(0, config.max_requests - currentCount);\nconst allowed = currentCount < config.max_requests;\n\nconst resetTime = new Date();\nresetTime.setMinutes(resetTime.getMinutes() + config.window_minutes);\n\nreturn {\n  client_id: config.client_id,\n  endpoint: config.endpoint,\n  allowed: allowed,\n  current_count: currentCount,\n  max_requests: config.max_requests,\n  remaining: remaining,\n  window_minutes: config.window_minutes,\n  reset_at: resetTime.toISOString(),\n  checked_at: config.checked_at\n};"
+      },
+      "id": "evaluate-limit",
+      "name": "Evaluate Limit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "not-allowed",
+              "leftValue": "={{ $json.allowed }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "is-blocked",
+      "name": "Is Blocked?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1130, 200]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "rate_limit_violations",
+        "columns": "client_id,endpoint,current_count,max_requests,blocked_at"
+      },
+      "id": "log-violation",
+      "name": "Log Violation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1350, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ allowed: $json.allowed, remaining: $json.remaining, limit: $json.max_requests, reset_at: $json.reset_at }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "X-RateLimit-Limit",
+                "value": "={{ $json.max_requests }}"
+              },
+              {
+                "name": "X-RateLimit-Remaining",
+                "value": "={{ $json.remaining }}"
+              },
+              {
+                "name": "X-RateLimit-Reset",
+                "value": "={{ $json.reset_at }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-result",
+      "name": "Return Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1130, 400]
+    }
+  ],
+  "connections": {
+    "Rate Limit Check": {
+      "main": [
+        [
+          {
+            "node": "Prepare Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Check": {
+      "main": [
+        [
+          {
+            "node": "Count Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Requests": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Limit": {
+      "main": [
+        [
+          {
+            "node": "Is Blocked?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Return Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Blocked?": {
+      "main": [
+        [
+          {
+            "node": "Log Violation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "API"
+    },
+    {
+      "name": "Security"
+    }
+  ]
+}

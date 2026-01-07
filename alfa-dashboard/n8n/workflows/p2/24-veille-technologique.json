@@ -1,0 +1,298 @@
+{
+  "name": "P2-24 Veille Technologique",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Weekdays 7AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Define topics to monitor\nconst topics = [\n  { keyword: 'Claude AI', category: 'AI' },\n  { keyword: 'GPT-5', category: 'AI' },\n  { keyword: 'MCP server', category: 'DevTools' },\n  { keyword: 'n8n automation', category: 'DevTools' },\n  { keyword: 'Docker security', category: 'DevOps' },\n  { keyword: 'Kubernetes CVE', category: 'Security' },\n  { keyword: 'LLM jailbreak', category: 'Security' },\n  { keyword: 'AI regulation EU', category: 'Legal' }\n];\n\nreturn topics.map(t => ({ json: t }));"
+      },
+      "id": "get-topics",
+      "name": "Get Topics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 3,
+        "options": {}
+      },
+      "id": "batch-topics",
+      "name": "Batch Topics",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://news.ycombinator.com/rss",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "fetch-hn",
+      "name": "Fetch Hacker News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.reddit.com/r/MachineLearning/new.json",
+        "options": {
+          "timeout": 15000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "25"
+            }
+          ]
+        }
+      },
+      "id": "fetch-reddit",
+      "name": "Fetch Reddit ML",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 400],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const topics = $('Get Topics').all().map(t => t.json);\nconst hnData = $('Fetch Hacker News').first()?.json || {};\nconst redditData = $('Fetch Reddit ML').first()?.json?.data?.children || [];\n\nconst relevantArticles = [];\nconst now = new Date();\n\n// Parse HN (would need XML parsing in real implementation)\n// Simulate relevant articles for demo\nfor (const topic of topics) {\n  // Simulated matching - in real implementation, parse RSS and match\n  if (Math.random() > 0.7) {\n    relevantArticles.push({\n      title: `New developments in ${topic.keyword}`,\n      url: `https://news.ycombinator.com/item?id=${Date.now()}`,\n      source: 'Hacker News',\n      category: topic.category,\n      keyword: topic.keyword,\n      found_at: now.toISOString()\n    });\n  }\n}\n\n// Parse Reddit\nfor (const post of redditData) {\n  const title = post.data?.title?.toLowerCase() || '';\n  for (const topic of topics) {\n    if (title.includes(topic.keyword.toLowerCase())) {\n      relevantArticles.push({\n        title: post.data.title,\n        url: `https://reddit.com${post.data.permalink}`,\n        source: 'Reddit',\n        category: topic.category,\n        keyword: topic.keyword,\n        score: post.data.score,\n        found_at: now.toISOString()\n      });\n    }\n  }\n}\n\nconst summary = {\n  total_articles: relevantArticles.length,\n  by_category: {},\n  by_source: {},\n  scanned_at: now.toISOString()\n};\n\nfor (const article of relevantArticles) {\n  summary.by_category[article.category] = (summary.by_category[article.category] || 0) + 1;\n  summary.by_source[article.source] = (summary.by_source[article.source] || 0) + 1;\n}\n\nreturn {\n  summary,\n  articles: relevantArticles.slice(0, 10) // Top 10\n};"
+      },
+      "id": "compile-veille",
+      "name": "Compile Veille",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "veille_logs",
+        "columns": "total_articles,by_category,by_source,scanned_at"
+      },
+      "id": "save-veille",
+      "name": "Save Veille Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1350, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-articles",
+              "leftValue": "={{ $json.summary.total_articles }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "has-articles",
+      "name": "Has Articles?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [1570, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#veille-tech",
+        "text": "📰 Veille Technologique du jour",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "📰 Veille Technologique"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Articles trouvés:*\n{{ $json.summary.total_articles }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Scanned:*\n{{ $json.summary.scanned_at }}"
+                }
+              ]
+            },
+            {
+              "type": "divider"
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Top articles disponibles dans le dashboard*"
+              }
+            }
+          ]
+        }
+      },
+      "id": "slack-veille",
+      "name": "Slack Veille Report",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1790, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Weekdays 7AM": {
+      "main": [
+        [
+          {
+            "node": "Get Topics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Topics": {
+      "main": [
+        [
+          {
+            "node": "Batch Topics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Topics": {
+      "main": [
+        [
+          {
+            "node": "Fetch Hacker News",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Reddit ML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Hacker News": {
+      "main": [
+        [
+          {
+            "node": "Compile Veille",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Reddit ML": {
+      "main": [
+        [
+          {
+            "node": "Compile Veille",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Veille": {
+      "main": [
+        [
+          {
+            "node": "Save Veille Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Veille Log": {
+      "main": [
+        [
+          {
+            "node": "Has Articles?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Articles?": {
+      "main": [
+        [
+          {
+            "node": "Slack Veille Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P2-Medium"
+    },
+    {
+      "name": "Veille"
+    }
+  ]
+}

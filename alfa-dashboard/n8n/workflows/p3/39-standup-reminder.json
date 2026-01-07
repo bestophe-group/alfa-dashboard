@@ -1,0 +1,141 @@
+{
+  "name": "P3-39 Standup Reminder",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "55 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Weekdays 9:55AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst dayNames = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];\n\nconst standup = {\n  day: dayNames[now.getDay()],\n  date: now.toLocaleDateString('fr-FR'),\n  time: '10:00',\n  meeting_link: process.env.STANDUP_MEET_LINK || 'https://meet.google.com/xxx-xxxx-xxx',\n  reminder_sent_at: now.toISOString()\n};\n\nreturn standup;"
+      },
+      "id": "prepare-reminder",
+      "name": "Prepare Reminder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#dev",
+        "text": "🧍 Standup Reminder",
+        "attachments": [],
+        "otherOptions": {},
+        "blocksUi": {
+          "blocksValues": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "🧍 Daily Standup"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "Hey team! 👋\n\nLe standup commence dans *5 minutes* !"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*📅 Date:*\n{{ $json.day }} {{ $json.date }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*🕙 Heure:*\n{{ $json.time }}"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "Préparez vos réponses aux 3 questions:\n1. Qu'avez-vous fait hier?\n2. Que ferez-vous aujourd'hui?\n3. Y a-t-il des blocages?"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🔗 Rejoindre le Meet"
+                  },
+                  "url": "{{ $json.meeting_link }}",
+                  "style": "primary"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "slack-reminder",
+      "name": "Slack Standup Reminder",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [690, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "slack-credentials",
+          "name": "Slack API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Weekdays 9:55AM": {
+      "main": [
+        [
+          {
+            "node": "Prepare Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Reminder": {
+      "main": [
+        [
+          {
+            "node": "Slack Standup Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "P3-Low"
+    },
+    {
+      "name": "Team"
+    },
+    {
+      "name": "Meetings"
+    }
+  ]
+}
