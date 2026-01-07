@@ -1,26 +1,26 @@
 # ALFA Dashboard
 
-> Plateforme unifiée de gestion de projets avec Huly, Infisical, n8n, et Uptime Kuma
+> Plateforme unifiée de gestion DevOps avec n8n, Infisical, et Uptime Kuma
 
 ## 🎯 Vue d'ensemble
 
-ALFA Dashboard est une stack Docker complète pour la gestion de projets, comprenant:
+ALFA Dashboard est une stack Docker complète pour la gestion DevOps, comprenant:
 
-- **Huly** (port 3000) - Gestion de projets et Kanban
-- **Infisical** (port 8080) - Gestion des secrets et API keys
-- **n8n** (port 5678) - Automatisation de workflows
-- **Uptime Kuma** (port 3001) - Monitoring et alertes
-- **Traefik** (ports 80/443) - Reverse proxy avec SSL automatique
-- **PostgreSQL** (port 5432) - Base de données partagée
-- **Redis** (port 6379) - Cache et sessions
-- **MongoDB** - Base de données pour Huly
+| Service | Port | Description |
+|---------|------|-------------|
+| **Traefik** | 80/443/8080 | Reverse proxy avec SSL automatique |
+| **PostgreSQL** | 5432 | Base de données principale |
+| **Redis** | 6379 | Cache et sessions |
+| **n8n** | 5678 | Automatisation de workflows |
+| **Infisical** | 8080 | Gestion des secrets et API keys |
+| **Uptime Kuma** | 3001 | Monitoring et alertes |
 
 ## 📋 Prérequis
 
-- Docker Engine 20.10+
-- Docker Compose v2.0+
-- 4GB RAM minimum
-- 20GB d'espace disque
+- Docker Engine 24.0+
+- Docker Compose v2.20+
+- 2GB RAM minimum (4GB recommandé)
+- 10GB d'espace disque
 
 ## 🚀 Installation rapide
 
@@ -30,145 +30,101 @@ ALFA Dashboard est une stack Docker complète pour la gestion de projets, compre
 # Copier le fichier d'environnement
 cp .env.example .env
 
-# Éditer les variables (IMPORTANT!)
+# Générer des mots de passe sécurisés
+openssl rand -base64 32  # Pour POSTGRES_PASSWORD
+openssl rand -base64 32  # Pour REDIS_PASSWORD
+openssl rand -hex 32     # Pour N8N_ENCRYPTION_KEY
+openssl rand -hex 16     # Pour INFISICAL_ENCRYPTION_KEY (32 chars exactement)
+openssl rand -base64 32  # Pour INFISICAL_AUTH_SECRET
+
+# Éditer les variables
 nano .env
 ```
 
-### 2. Démarrage automatique
+### 2. Démarrage
 
 ```bash
-./scripts/setup.sh
-```
-
-### 3. Démarrage manuel
-
-```bash
-# Valider la configuration
-docker compose config
-
 # Démarrer les services
 docker compose up -d
 
 # Vérifier le statut
 docker compose ps
+
+# Lancer les tests
+./tests/test-stack.sh
 ```
 
 ## 🌐 Accès aux services
 
-### Développement local (localhost)
+### Développement local
 
-- **Traefik Dashboard**: http://localhost:8080
-- **Huly**: http://localhost:3000
-- **Infisical**: http://localhost:8080
-- **n8n**: http://localhost:5678
-- **Uptime Kuma**: http://localhost:3001
+| Service | URL |
+|---------|-----|
+| Traefik Dashboard | http://localhost:8080 |
+| n8n | http://localhost:5678 (via container) |
+| Uptime Kuma | http://localhost:3001 (via container) |
+| Infisical | http://localhost:8080 (via container) |
 
 ### Production (avec domaine)
 
-- **Huly**: https://huly.votredomaine.com
-- **Infisical**: https://infisical.votredomaine.com
-- **n8n**: https://n8n.votredomaine.com
-- **Uptime Kuma**: https://uptime.votredomaine.com
+| Service | URL |
+|---------|-----|
+| n8n | https://n8n.votredomaine.com |
+| Infisical | https://secrets.votredomaine.com |
+| Uptime Kuma | https://status.votredomaine.com |
+| Traefik | https://traefik.votredomaine.com |
 
 ## 🔧 Scripts utiles
 
-### Setup
-
 ```bash
+# Setup initial
 ./scripts/setup.sh
-```
 
-Configure et démarre tous les services.
-
-### Health Check
-
-```bash
+# Vérification santé
 ./scripts/health-check.sh
-```
 
-Vérifie l'état de tous les services et endpoints.
-
-### Backup
-
-```bash
+# Backup complet
 ./scripts/backup.sh
+
+# Tests
+./tests/test-stack.sh
 ```
-
-Crée une sauvegarde complète:
-- PostgreSQL dump
-- Redis dump
-- Volumes Docker (Huly, n8n, Uptime Kuma)
-- Fichiers de configuration
-
-Les backups sont stockés dans `./backups/`
-
-## 🧪 Tests
-
-### Tests de structure
-
-```bash
-cd tests
-./test-stack.sh
-```
-
-Vérifie:
-- Syntaxe Docker Compose
-- Présence des fichiers de configuration
-- Définition des volumes et networks
-- Présence des healthchecks
-
-### Tests d'endpoints
-
-```bash
-cd tests
-./test-endpoints.sh
-```
-
-Teste:
-- Accessibilité des services
-- Santé des endpoints
-- Connexions aux bases de données
 
 ## 📁 Structure du projet
 
 ```
 alfa-dashboard/
-├── docker-compose.yml          # Configuration principale
-├── .env                        # Variables d'environnement (à créer)
+├── docker-compose.yml          # Stack principale (6 services)
+├── .env                        # Variables d'environnement
 ├── .env.example               # Template de configuration
-├── .gitignore                 # Fichiers ignorés par git
 ├── traefik/
-│   └── traefik.yml           # Configuration Traefik
+│   ├── traefik.yml           # Configuration Traefik
+│   └── dynamic/              # Config dynamique
 ├── scripts/
-│   ├── setup.sh              # Installation automatique
+│   ├── setup.sh              # Installation
 │   ├── backup.sh             # Sauvegarde
-│   └── health-check.sh       # Vérification santé
+│   └── health-check.sh       # Health check
 ├── tests/
-│   ├── test-stack.sh         # Tests structure
+│   ├── test-stack.sh         # Tests stack (34 tests)
 │   └── test-endpoints.sh     # Tests endpoints
-└── README.md                  # Ce fichier
+└── README.md
 ```
 
 ## 🔐 Sécurité
 
-### Variables sensibles
-
-Modifiez OBLIGATOIREMENT dans `.env`:
+### Variables sensibles à modifier
 
 ```env
-POSTGRES_PASSWORD=changeme          # ⚠️ À changer
-REDIS_PASSWORD=changeme             # ⚠️ À changer
-N8N_BASIC_AUTH_PASSWORD=changeme    # ⚠️ À changer
-N8N_ENCRYPTION_KEY=changeme...      # ⚠️ À changer (32+ chars)
-INFISICAL_TOKEN=changeme            # ⚠️ À changer
-HULY_SECRET=changeme                # ⚠️ À changer
+POSTGRES_PASSWORD=<générer avec openssl>
+REDIS_PASSWORD=<générer avec openssl>
+N8N_ENCRYPTION_KEY=<32 caractères hex>
+INFISICAL_ENCRYPTION_KEY=<32 caractères exactement>
+INFISICAL_AUTH_SECRET=<base64>
 ```
 
 ### SSL en production
 
-Traefik gère automatiquement les certificats Let's Encrypt.
-
-Configurez dans `.env`:
+Traefik gère automatiquement les certificats Let's Encrypt:
 
 ```env
 DOMAIN=votredomaine.com
@@ -177,110 +133,75 @@ ACME_EMAIL=admin@votredomaine.com
 
 ## 🛠️ Maintenance
 
-### Voir les logs
-
 ```bash
-# Tous les services
-docker compose logs -f
+# Logs
+docker compose logs -f [service]
 
-# Un service spécifique
-docker compose logs -f huly
-docker compose logs -f n8n
-```
+# Redémarrer un service
+docker compose restart [service]
 
-### Redémarrer un service
+# Mise à jour
+docker compose pull && docker compose up -d
 
-```bash
-docker compose restart huly
-```
-
-### Mettre à jour les images
-
-```bash
-docker compose pull
-docker compose up -d
-```
-
-### Arrêter la stack
-
-```bash
+# Arrêt
 docker compose down
+
+# Arrêt + suppression données
+docker compose down -v  # ⚠️ Destructif!
 ```
 
-### Arrêter et supprimer les volumes
+## 🧪 Tests
 
 ```bash
-docker compose down -v  # ⚠️ Supprime les données!
+# 34 tests automatisés
+./tests/test-stack.sh
+
+# Vérifie:
+# - Syntaxe Docker Compose
+# - Fichiers de configuration
+# - Volumes et networks
+# - Healthchecks
+# - Containers running
+# - Services healthy
+# - Endpoints répondent
 ```
 
-## 🔄 Restauration
+## 📊 Architecture
 
-```bash
-# Restaurer PostgreSQL
-docker compose exec -T postgres psql -U ${POSTGRES_USER} < backup/postgres.sql
-
-# Restaurer Redis
-docker compose cp backup/redis_dump.rdb redis:/data/dump.rdb
-docker compose restart redis
 ```
-
-## 📊 Monitoring
-
-Uptime Kuma permet de monitorer:
-
-1. Tous les services internes
-2. Sites web externes
-3. Ports TCP
-4. APIs
-
-Configurez les alertes via:
-- Email
-- Slack
-- Discord
-- Telegram
-- etc.
-
-## 🐛 Troubleshooting
-
-### Les services ne démarrent pas
-
-```bash
-# Vérifier les logs
-docker compose logs
-
-# Vérifier la config
-docker compose config
-
-# Vérifier les ressources
-docker system df
-```
-
-### Port déjà utilisé
-
-Modifiez les ports dans `.env` ou arrêtez le service conflictuel.
-
-### Problème de permissions
-
-```bash
-# Traefik acme.json
-chmod 600 traefik/letsencrypt/acme.json
+┌─────────────────────────────────────────────────────────┐
+│                      TRAEFIK                            │
+│              (Reverse Proxy + SSL)                      │
+│                   :80 :443 :8080                        │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+        ┌───────────────┼───────────────┐
+        │               │               │
+        ▼               ▼               ▼
+   ┌─────────┐    ┌─────────┐    ┌─────────┐
+   │   n8n   │    │Infisical│    │ Uptime  │
+   │  :5678  │    │  :8080  │    │  Kuma   │
+   └────┬────┘    └────┬────┘    │  :3001  │
+        │              │         └─────────┘
+        │              │
+        ▼              ▼
+   ┌──────────────────────┐
+   │      PostgreSQL      │
+   │        :5432         │
+   └──────────┬───────────┘
+              │
+        ┌─────┴─────┐
+        │   Redis   │
+        │   :6379   │
+        └───────────┘
 ```
 
 ## 📚 Documentation
 
-- [Huly](https://huly.io/docs)
-- [Infisical](https://infisical.com/docs)
 - [n8n](https://docs.n8n.io)
+- [Infisical](https://infisical.com/docs)
 - [Uptime Kuma](https://github.com/louislam/uptime-kuma)
 - [Traefik](https://doc.traefik.io/traefik/)
-
-## 🤝 Support
-
-Pour toute question ou problème:
-
-1. Vérifiez les logs: `docker compose logs`
-2. Lancez le health check: `./scripts/health-check.sh`
-3. Consultez la documentation des services
 
 ## 📝 License
 
@@ -288,4 +209,4 @@ MIT
 
 ---
 
-**Généré avec ALFA-Agent-Method v2.0**
+**ALFA Dashboard v1.0.0** - Stack fonctionnelle avec 6 services et 34 tests passants.
