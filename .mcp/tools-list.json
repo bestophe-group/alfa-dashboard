@@ -1,0 +1,611 @@
+{
+  "totalTools": 129,
+  "categories": [
+    {
+      "category": "Core ALFA",
+      "count": 7,
+      "tools": [
+        {
+          "name": "alfa_status",
+          "description": "Get status of all ALFA services"
+        },
+        {
+          "name": "alfa_logs",
+          "description": "Get logs from ALFA service"
+        },
+        {
+          "name": "alfa_restart",
+          "description": "Restart an ALFA service"
+        },
+        {
+          "name": "alfa_health",
+          "description": "Check health of ALFA services"
+        },
+        {
+          "name": "alfa_metrics",
+          "description": "Query Prometheus metrics"
+        },
+        {
+          "name": "alfa_workflows",
+          "description": "List n8n workflows"
+        },
+        {
+          "name": "alfa_db_query",
+          "description": "Execute PostgreSQL query on ALFA database"
+        }
+      ]
+    },
+    {
+      "category": "Grafana",
+      "count": 5,
+      "tools": [
+        {
+          "name": "alfa_grafana_create_dashboard",
+          "description": "Create a new Grafana dashboard with panels and queries"
+        },
+        {
+          "name": "alfa_grafana_query_prometheus",
+          "description": "Execute PromQL query and format results for visualization"
+        },
+        {
+          "name": "alfa_grafana_create_alert",
+          "description": "Create Grafana alert rule with conditions and notifications"
+        },
+        {
+          "name": "alfa_grafana_export_dashboard",
+          "description": "Export dashboard as JSON or PDF"
+        },
+        {
+          "name": "alfa_grafana_import_dashboard",
+          "description": "Import dashboard from JSON or Grafana.com"
+        }
+      ]
+    },
+    {
+      "category": "Power BI",
+      "count": 8,
+      "tools": [
+        {
+          "name": "alfa_powerbi_create_dataset",
+          "description": "Create Power BI dataset with schema and tables"
+        },
+        {
+          "name": "alfa_powerbi_push_data",
+          "description": "Push rows to Power BI dataset table"
+        },
+        {
+          "name": "alfa_powerbi_create_report",
+          "description": "Create Power BI report from dataset"
+        },
+        {
+          "name": "alfa_powerbi_refresh_dataset",
+          "description": "Trigger dataset refresh"
+        },
+        {
+          "name": "alfa_powerbi_export_report",
+          "description": "Export Power BI report to PDF, PNG, or PPTX"
+        },
+        {
+          "name": "alfa_powerbi_create_dataflow",
+          "description": "Create Power BI dataflow with transformations"
+        },
+        {
+          "name": "alfa_powerbi_embed_token",
+          "description": "Generate embed token for embedding reports in web apps"
+        },
+        {
+          "name": "alfa_powerbi_query_dax",
+          "description": "Execute DAX query on dataset"
+        }
+      ]
+    },
+    {
+      "category": "OSINT",
+      "count": 8,
+      "tools": [
+        {
+          "name": "alfa_osint_company_research",
+          "description": "Recherche OSINT complète sur une entreprise: SIREN, dirigeants, patrimoine, actionnaires"
+        },
+        {
+          "name": "alfa_osint_person_research",
+          "description": "Recherche OSINT sur une personne: réseaux sociaux, entreprises, patrimoine, dark web mentions"
+        },
+        {
+          "name": "alfa_osint_dark_web_search",
+          "description": "Recherche sur le dark web: data leaks, mentions d'email, compromissions"
+        },
+        {
+          "name": "alfa_osint_social_media_scrape",
+          "description": "Scraping de profils réseaux sociaux: LinkedIn, Twitter, Facebook, Instagram"
+        },
+        {
+          "name": "alfa_osint_domain_reconnaissance",
+          "description": "Reconnaissance complète d'un domaine: DNS, subdomains, technologies, emails, ports"
+        },
+        {
+          "name": "alfa_osint_executive_team_mapping",
+          "description": "Cartographie complète de l'équipe dirigeante: organigramme, parcours, connexions"
+        },
+        {
+          "name": "alfa_osint_financial_research",
+          "description": "Recherche financière: bilans, actionnaires, participations, patrimoine immobilier"
+        },
+        {
+          "name": "alfa_osint_data_breach_monitor",
+          "description": "Surveillance continue des data breaches pour un domaine ou liste d'emails"
+        }
+      ]
+    },
+    {
+      "category": "ETL",
+      "count": 10,
+      "tools": [
+        {
+          "name": "alfa_etl_video_to_text",
+          "description": "Transcription vidéo vers texte (audio extraction + speech-to-text)"
+        },
+        {
+          "name": "alfa_etl_audio_to_text",
+          "description": "Transcription audio vers texte via Whisper"
+        },
+        {
+          "name": "alfa_etl_pdf_to_text",
+          "description": "Extraction de texte depuis PDF avec OCR si nécessaire"
+        },
+        {
+          "name": "alfa_etl_image_to_text",
+          "description": "OCR sur image: extraction de texte"
+        },
+        {
+          "name": "alfa_etl_csv_transform",
+          "description": "Transformation CSV: mapping colonnes, filtres, agrégations"
+        },
+        {
+          "name": "alfa_etl_json_to_csv",
+          "description": "Conversion JSON vers CSV avec aplatissement de structure"
+        },
+        {
+          "name": "alfa_etl_excel_to_db",
+          "description": "Import Excel vers PostgreSQL avec mapping de colonnes"
+        },
+        {
+          "name": "alfa_etl_text_to_speech",
+          "description": "Génération audio depuis texte via ElevenLabs ou autre TTS"
+        },
+        {
+          "name": "alfa_etl_web_to_markdown",
+          "description": "Conversion page web vers Markdown propre"
+        },
+        {
+          "name": "alfa_etl_batch_convert",
+          "description": "Conversion par lot de fichiers (audio, vidéo, images, documents)"
+        }
+      ]
+    },
+    {
+      "category": "Communication",
+      "count": 9,
+      "tools": [
+        {
+          "name": "alfa_design_brand_identity",
+          "description": "Génération de charte graphique complète: logo, couleurs, typographie, guidelines"
+        },
+        {
+          "name": "alfa_design_social_media_pack",
+          "description": "Création pack réseaux sociaux: posts, stories, covers, profils"
+        },
+        {
+          "name": "alfa_design_website_mockup",
+          "description": "Génération maquette de site web moderne et dynamique"
+        },
+        {
+          "name": "alfa_generate_website_code",
+          "description": "Génération code site web: HTML/CSS/JS moderne avec animations"
+        },
+        {
+          "name": "alfa_design_infographic",
+          "description": "Création infographie: data visualization, charts, illustrations"
+        },
+        {
+          "name": "alfa_design_presentation",
+          "description": "Création présentation PowerPoint/Keynote professionnelle"
+        },
+        {
+          "name": "alfa_marketing_recommendations",
+          "description": "Recommandations marketing stratégiques: canaux, contenu, KPIs"
+        },
+        {
+          "name": "alfa_content_calendar",
+          "description": "Génération calendrier éditorial réseaux sociaux sur 3 mois"
+        },
+        {
+          "name": "alfa_video_script_generator",
+          "description": "Génération script vidéo marketing ou explicative"
+        }
+      ]
+    },
+    {
+      "category": "Agents",
+      "count": 10,
+      "tools": [
+        {
+          "name": "alfa_manus_task",
+          "description": "Déléguer tâche à Manus.im (browser automation, research, data extraction)"
+        },
+        {
+          "name": "alfa_chatgpt_task",
+          "description": "Déléguer analyse ou génération à ChatGPT via API"
+        },
+        {
+          "name": "alfa_perplexity_research",
+          "description": "Recherche approfondie via Perplexity AI"
+        },
+        {
+          "name": "alfa_grok_analysis",
+          "description": "Analyse via Grok (X.ai) - accès temps réel à X/Twitter"
+        },
+        {
+          "name": "alfa_notebooklm_synthesize",
+          "description": "Synthèse de documents via NotebookLM"
+        },
+        {
+          "name": "alfa_elevenlabs_voice_agent",
+          "description": "Créer agent conversationnel vocal avec ElevenLabs"
+        },
+        {
+          "name": "alfa_opendata_import",
+          "description": "Import données depuis data.gouv.fr ou autres sources OpenData"
+        },
+        {
+          "name": "alfa_multi_agent_chain",
+          "description": "Orchestration en chaîne de plusieurs agents pour tâche complexe"
+        },
+        {
+          "name": "alfa_comet_assistant_task",
+          "description": "Déléguer tâche à Comet Assistant (extension Chrome)"
+        },
+        {
+          "name": "alfa_nano_banana_task",
+          "description": "Déléguer tâche à Nano Banana (no-code automation)"
+        }
+      ]
+    },
+    {
+      "category": "Claude Code",
+      "count": 9,
+      "tools": [
+        {
+          "name": "alfa_claude_create_project",
+          "description": "Créer projet complet avec Claude Code: Node, Python, React, Next.js, etc."
+        },
+        {
+          "name": "alfa_claude_debug_error",
+          "description": "Analyser et débugger erreur de code avec suggestions de fix"
+        },
+        {
+          "name": "alfa_claude_generate_tests",
+          "description": "Générer tests unitaires et d'intégration pour code existant"
+        },
+        {
+          "name": "alfa_claude_refactor_code",
+          "description": "Refactoring code: amélioration lisibilité, performance, patterns"
+        },
+        {
+          "name": "alfa_claude_add_feature",
+          "description": "Ajouter nouvelle fonctionnalité à projet existant"
+        },
+        {
+          "name": "alfa_claude_document_code",
+          "description": "Générer documentation: JSDoc, docstrings, README, API docs"
+        },
+        {
+          "name": "alfa_claude_optimize_code",
+          "description": "Optimisation de performance: profiling, suggestions, benchmarks"
+        },
+        {
+          "name": "alfa_claude_setup_ci_cd",
+          "description": "Configurer pipeline CI/CD: GitHub Actions, GitLab CI, CircleCI"
+        },
+        {
+          "name": "alfa_claude_migrate_code",
+          "description": "Migration de code: JS→TS, Python 2→3, Class→Hooks, etc."
+        }
+      ]
+    },
+    {
+      "category": "Collaboration",
+      "count": 11,
+      "tools": [
+        {
+          "name": "alfa_slack_send_message",
+          "description": "Envoyer message Slack sur channel ou DM"
+        },
+        {
+          "name": "alfa_slack_create_channel",
+          "description": "Créer channel Slack (public/private)"
+        },
+        {
+          "name": "alfa_slack_manage_users",
+          "description": "Inviter/retirer users, gérer permissions Slack"
+        },
+        {
+          "name": "alfa_slack_archive_export",
+          "description": "Exporter historique Slack ou archiver channels"
+        },
+        {
+          "name": "alfa_microsoft365_user_management",
+          "description": "Gestion utilisateurs Azure AD / Microsoft 365"
+        },
+        {
+          "name": "alfa_microsoft365_teams_management",
+          "description": "Créer/gérer Teams, channels, permissions"
+        },
+        {
+          "name": "alfa_microsoft365_sharepoint",
+          "description": "Gestion SharePoint: sites, listes, permissions"
+        },
+        {
+          "name": "alfa_microsoft365_exchange",
+          "description": "Gestion Exchange: boîtes mail, groupes distrib, règles"
+        },
+        {
+          "name": "alfa_google_workspace_users",
+          "description": "Gestion utilisateurs Google Workspace"
+        },
+        {
+          "name": "alfa_google_workspace_groups",
+          "description": "Gestion groupes Google (groupes distrib, sécurité)"
+        },
+        {
+          "name": "alfa_google_workspace_drive",
+          "description": "Gestion Google Drive: partage, permissions, upload"
+        }
+      ]
+    },
+    {
+      "category": "Infrastructure",
+      "count": 9,
+      "tools": [
+        {
+          "name": "alfa_ovh_domain_management",
+          "description": "Gestion domaines OVH: DNS, redirections, emails"
+        },
+        {
+          "name": "alfa_ovh_vps_management",
+          "description": "Gestion VPS OVH: création, redémarrage, monitoring"
+        },
+        {
+          "name": "alfa_hostinger_management",
+          "description": "Gestion hébergement Hostinger: sites, domaines, emails"
+        },
+        {
+          "name": "alfa_aws_s3_management",
+          "description": "Gestion AWS S3: buckets, upload, permissions"
+        },
+        {
+          "name": "alfa_aws_ec2_management",
+          "description": "Gestion instances EC2: start, stop, monitoring"
+        },
+        {
+          "name": "alfa_aws_lambda_deploy",
+          "description": "Déployer fonction Lambda AWS"
+        },
+        {
+          "name": "alfa_vercel_deploy",
+          "description": "Déployer sur Vercel: Next.js, React, static"
+        },
+        {
+          "name": "alfa_v0dev_generate",
+          "description": "Générer UI avec v0.dev (Vercel)"
+        },
+        {
+          "name": "alfa_cloudflare_dns",
+          "description": "Gestion DNS Cloudflare: records, proxying, SSL"
+        }
+      ]
+    },
+    {
+      "category": "Business SaaS",
+      "count": 11,
+      "tools": [
+        {
+          "name": "alfa_payfit_employees",
+          "description": "Gestion employés PayFit: création, export, paie"
+        },
+        {
+          "name": "alfa_payfit_time_off",
+          "description": "Gestion congés PayFit: demandes, validations, soldes"
+        },
+        {
+          "name": "alfa_pennylane_invoices",
+          "description": "Gestion factures PennyLane: création, export, relances"
+        },
+        {
+          "name": "alfa_pennylane_expenses",
+          "description": "Gestion notes de frais PennyLane"
+        },
+        {
+          "name": "alfa_pennylane_accounting_export",
+          "description": "Export comptabilité PennyLane: FEC, bilan, compte de résultat"
+        },
+        {
+          "name": "alfa_bitwarden_vault",
+          "description": "Gestion coffre-fort Bitwarden: mots de passe, partage"
+        },
+        {
+          "name": "alfa_instagram_post",
+          "description": "Publier sur Instagram: photo, carrousel, story, reel"
+        },
+        {
+          "name": "alfa_facebook_page_post",
+          "description": "Publier sur page Facebook: texte, image, vidéo, lien"
+        },
+        {
+          "name": "alfa_tiktok_post",
+          "description": "Publier vidéo TikTok"
+        },
+        {
+          "name": "alfa_youtube_upload",
+          "description": "Upload vidéo YouTube: titre, description, playlist"
+        },
+        {
+          "name": "alfa_canva_design",
+          "description": "Créer design Canva via API"
+        }
+      ]
+    },
+    {
+      "category": "CMS",
+      "count": 9,
+      "tools": [
+        {
+          "name": "alfa_wix_site_management",
+          "description": "Gestion sites Wix: création, publication, backup"
+        },
+        {
+          "name": "alfa_wix_page_management",
+          "description": "Gestion pages Wix: création, modification, suppression"
+        },
+        {
+          "name": "alfa_wix_store_management",
+          "description": "Gestion boutique Wix: produits, commandes, inventaire"
+        },
+        {
+          "name": "alfa_wordpress_site_management",
+          "description": "Gestion sites WordPress: création, backup, mise à jour"
+        },
+        {
+          "name": "alfa_wordpress_content_management",
+          "description": "Gestion contenu WordPress: posts, pages, médias"
+        },
+        {
+          "name": "alfa_wordpress_plugin_management",
+          "description": "Gestion plugins WordPress: installation, activation, configuration"
+        },
+        {
+          "name": "alfa_wordpress_theme_management",
+          "description": "Gestion thèmes WordPress: installation, activation, customization"
+        },
+        {
+          "name": "alfa_wordpress_user_management",
+          "description": "Gestion utilisateurs WordPress: création, rôles, permissions"
+        },
+        {
+          "name": "alfa_wordpress_woocommerce",
+          "description": "Gestion WooCommerce: produits, commandes, clients"
+        }
+      ]
+    },
+    {
+      "category": "Developer",
+      "count": 8,
+      "tools": [
+        {
+          "name": "alfa_github_repo_management",
+          "description": "Gestion repos GitHub: création, clonage, fork, archivage"
+        },
+        {
+          "name": "alfa_github_issues_management",
+          "description": "Gestion issues GitHub: création, assignation, labels, fermeture"
+        },
+        {
+          "name": "alfa_github_pr_management",
+          "description": "Gestion Pull Requests: création, review, merge, commentaires"
+        },
+        {
+          "name": "alfa_github_actions_management",
+          "description": "Gestion GitHub Actions: workflows, runs, artifacts"
+        },
+        {
+          "name": "alfa_github_release_management",
+          "description": "Gestion releases GitHub: création, publication, assets"
+        },
+        {
+          "name": "alfa_browser_navigate",
+          "description": "Navigation web automatisée: ouvrir URL, remplir forms, cliquer, scraper"
+        },
+        {
+          "name": "alfa_browser_scrape",
+          "description": "Web scraping avancé: extraction données structurées"
+        },
+        {
+          "name": "alfa_browser_authenticate",
+          "description": "Authentification web automatisée: login, cookies, sessions"
+        }
+      ]
+    },
+    {
+      "category": "Azure SSO",
+      "count": 7,
+      "tools": [
+        {
+          "name": "alfa_azure_sso_app_registration",
+          "description": "Enregistrer application dans Azure AD pour SSO"
+        },
+        {
+          "name": "alfa_azure_sso_configure_saml",
+          "description": "Configurer SSO SAML pour application entreprise"
+        },
+        {
+          "name": "alfa_azure_sso_configure_oidc",
+          "description": "Configurer SSO OpenID Connect (OIDC)"
+        },
+        {
+          "name": "alfa_azure_sso_assign_users",
+          "description": "Assigner utilisateurs/groupes à application SSO"
+        },
+        {
+          "name": "alfa_azure_sso_conditional_access",
+          "description": "Configurer stratégies d'accès conditionnel"
+        },
+        {
+          "name": "alfa_azure_sso_get_metadata",
+          "description": "Récupérer métadonnées SSO (SAML/OIDC) pour configuration app"
+        },
+        {
+          "name": "alfa_azure_sso_test_connection",
+          "description": "Tester connexion SSO et authentification"
+        }
+      ]
+    },
+    {
+      "category": "Productivity",
+      "count": 8,
+      "tools": [
+        {
+          "name": "alfa_obsidian_create_note",
+          "description": "Créer note Obsidian avec frontmatter et liens"
+        },
+        {
+          "name": "alfa_obsidian_search_notes",
+          "description": "Rechercher dans vault Obsidian: contenu, tags, frontmatter"
+        },
+        {
+          "name": "alfa_obsidian_update_note",
+          "description": "Modifier note Obsidian: append, prepend, replace"
+        },
+        {
+          "name": "alfa_obsidian_graph_analysis",
+          "description": "Analyser graphe de connaissances: liens, backlinks, orphelins"
+        },
+        {
+          "name": "alfa_obsidian_daily_note",
+          "description": "Créer/accéder daily note avec template"
+        },
+        {
+          "name": "alfa_obsidian_export_vault",
+          "description": "Exporter vault ou dossier: PDF, HTML, markdown consolidé"
+        },
+        {
+          "name": "alfa_obsidian_template_apply",
+          "description": "Appliquer template Obsidian avec variables"
+        },
+        {
+          "name": "alfa_obsidian_sync_status",
+          "description": "Vérifier status sync Obsidian (Sync ou Git)"
+        }
+      ]
+    }
+  ]
+}
