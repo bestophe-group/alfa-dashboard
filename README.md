@@ -185,6 +185,67 @@ docker compose up -d
 
 **Documentation**: See [docs/RAG.md](docs/RAG.md) for detailed usage and examples.
 
+---
+
+### MCP Gateway - 125 AI Agent Tools
+
+**docker/mcp-gateway** - Model Context Protocol integration for AI agents
+
+The MCP Gateway provides **125 specialized tools** accessible via the Model Context Protocol, enabling AI agents to interact with the entire ALFA stack programmatically.
+
+**10 Tool Categories**:
+- **Browser Automation** (20 tools) - Playwright-based web testing & scraping
+- **GitHub Integration** (30 tools) - Issues, PRs, commits, code search
+- **Grafana & Dashboards** (15 tools) - Monitoring, alerts, visualization
+- **Prometheus** (5 tools) - Metrics queries and exploration
+- **Loki** (4 tools) - Log search and analysis
+- **Desktop Commander** (25 tools) - File operations, REPL, PDF generation
+- **Incidents & OnCall** (10 tools) - Incident management, on-call schedules
+- **Pyroscope & Sift** (6 tools) - Performance profiling, automated investigations
+- **Code Intelligence** (2 tools) - Library documentation lookup
+- **MCP Management** (6 tools) - Dynamic server discovery & configuration
+
+**Key Capabilities**:
+- **GitHub Automation** - Create issues/PRs, search code, manage repos
+- **Monitoring Queries** - Prometheus metrics, Loki logs, Grafana dashboards
+- **Data Analysis** - Interactive Python/Node REPLs for CSV/JSON analysis
+- **Browser Testing** - E2E tests, screenshots, form automation
+- **Incident Response** - Create incidents, query on-call schedules
+- **Documentation** - Fetch up-to-date library docs from Context7
+
+**Quick Start for AI Agents**:
+- [Quick Start Guide](docs/MCP-QUICKSTART.md) - 10 essential tools + workflows
+- [Complete Reference](docs/MCP-GATEWAY.md) - All 125 tools documented
+
+**Example Usage**:
+```json
+// Query production logs
+{
+  "name": "mcp__MCP_DOCKER__query_loki_logs",
+  "parameters": {
+    "datasourceUid": "loki-prod",
+    "logql": "{app=\"api\"} |= \"error\"",
+    "limit": 50
+  }
+}
+
+// Create GitHub issue
+{
+  "name": "mcp__MCP_DOCKER__issue_write",
+  "parameters": {
+    "method": "create",
+    "owner": "myorg",
+    "repo": "myrepo",
+    "title": "Bug: API timeout",
+    "labels": ["bug", "P1"]
+  }
+}
+```
+
+**Status**: ✅ Active (`docker ps --filter name=mcp-gateway`)
+
+---
+
 ## Workflow Organization
 
 ### P0 - Critical (Security & Infrastructure)

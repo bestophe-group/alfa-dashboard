@@ -5,6 +5,46 @@ All notable changes to ALFA Dashboard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-01-12
+
+### Added
+- **MCP Gateway Documentation** - Complete guide for AI agents
+  - [docs/MCP-GATEWAY.md](../docs/MCP-GATEWAY.md) - Comprehensive reference (922 lines)
+    - 125 tools across 10 categories documented
+    - 5 complete workflow examples (debugging, development, data analysis, monitoring, browser testing)
+    - Troubleshooting guide with 8 common errors
+    - Quick reference table by use case
+  - [docs/MCP-QUICKSTART.md](../docs/MCP-QUICKSTART.md) - Quick start guide (220 lines)
+    - Top 10 essential tools with examples
+    - 3 complete workflows
+    - Common errors and solutions
+    - Quick reference table
+  - README.md updated with MCP Gateway section
+    - 10 tool categories overview
+    - Key capabilities summary
+    - Example usage
+    - Links to documentation
+
+### Documentation
+- **MCP Tool Categories**:
+  - Browser Automation (20 tools) - Playwright-based web testing & scraping
+  - GitHub Integration (30 tools) - Issues, PRs, commits, code search
+  - Grafana & Dashboards (15 tools) - Monitoring, alerts, visualization
+  - Prometheus (5 tools) - Metrics queries and exploration
+  - Loki (4 tools) - Log search and analysis
+  - Desktop Commander (25 tools) - File operations, REPL, PDF generation
+  - Incidents & OnCall (10 tools) - Incident management, on-call schedules
+  - Pyroscope & Sift (6 tools) - Performance profiling, automated investigations
+  - Code Intelligence (2 tools) - Library documentation lookup
+  - MCP Management (6 tools) - Dynamic server discovery & configuration
+
+### Technical Details
+- Container: docker/mcp-gateway (running)
+- Protocol: Model Context Protocol (MCP)
+- Tool prefix: `mcp__MCP_DOCKER__`
+- Total documented tools: 125
+- Documentation size: ~1,140 lines
+
 ## [1.1.0] - 2026-01-12
 
 ### Added
