@@ -45,3 +45,8 @@ secrets/
 *.pem
 *.key
 *.crt
+
+# Backups (large files)
+backups/
+*.sql
+*.dump
