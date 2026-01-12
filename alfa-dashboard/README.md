@@ -27,7 +27,7 @@ docker compose up -d
 | Authentik | `https://auth.alfa.local` | 9000 |
 | Uptime Kuma | `https://status.alfa.local` | 3001 |
 | Traefik | `https://traefik.alfa.local` | 80/443 |
-| PostgreSQL | Internal only | 5432 |
+| PostgreSQL + pgvector | Internal only | 5432 |
 | Redis | Internal only | 6379 |
 
 ## Stack Architecture
@@ -56,8 +56,8 @@ docker compose up -d
 └────┬────┘ └─────────┘ └─────────┘ └─────────────┘       │
      │                                                     │
 ┌────▼───────────────────────────────────────────────────┐│
-│                     PostgreSQL                          ││
-│                    (Databases)                          ││
+│                PostgreSQL + pgvector                     ││
+│       (Databases + RAG Vector Search)                   ││
 ├─────────────────────────────────────────────────────────┤│
 │                       Redis                             ││
 │                  (Cache/Queue)                          ││
@@ -236,3 +236,69 @@ For local development, accept self-signed certs or use HTTP.
 ---
 
 Part of the [ALFA Method](../README.md) for foolproof automation.
+
+## Database
+
+### PostgreSQL + pgvector
+
+The stack uses PostgreSQL 16 with the pgvector extension for vector similarity search.
+
+**Image**: `pgvector/pgvector:pg16`
+
+**Features**:
+- Standard PostgreSQL 16 features
+- Vector data type for embeddings (up to 16,000 dimensions)
+- HNSW index for fast similarity search
+- IVFFlat index support
+- Distance operators: L2, inner product, cosine
+
+**Extensions Enabled**:
+- `vector` (v0.8.1) - Vector similarity search
+- `pgcrypto` (v1.3) - SHA256 hashing for deduplication
+- `uuid-ossp` - UUID generation
+- `plpgsql` - PL/pgSQL procedural language
+
+**Schemas**:
+- `public` - Default schema for application data
+- `rag` - Knowledge base for semantic search
+  - `documents` - Source documents with metadata
+  - `chunks` - Text chunks with overlapping context
+  - `embeddings` - 1536-dimensional vectors
+
+**RAG Functions**:
+- `rag.ingest_document()` - Ingest documents with deduplication
+- `rag.chunk_document()` - Split into chunks (default: 1000 chars, 200 overlap)
+- `rag.store_embedding()` - Store vector embeddings
+- `rag.search_vector()` - Semantic search using cosine similarity
+- `rag.search_fulltext()` - Keyword search in French
+- `rag.search_hybrid()` - Combined vector + fulltext (70/30)
+
+**Indexes**:
+- HNSW index on embeddings for fast vector search (m=16, ef_construction=64)
+- GIN index on chunks for French full-text search
+- B-tree indexes on metadata fields
+
+**Connection**:
+```bash
+# From host
+docker exec -it alfa-postgres psql -U alfa -d alfa
+
+# From container
+psql postgresql://alfa:alfapass123@postgres:5432/alfa
+```
+
+**Maintenance**:
+```sql
+-- Check vector extension
+SELECT * FROM pg_available_extensions WHERE name = 'vector';
+
+-- List RAG tables
+\dt rag.*
+
+-- View functions
+\df rag.*
+
+-- Check index sizes
+SELECT schemaname, tablename, indexname, pg_size_pretty(pg_relation_size(indexrelid))
+FROM pg_indexes WHERE schemaname = 'rag';
+```
