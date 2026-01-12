@@ -6,8 +6,9 @@
 -- Created: 2026-01-12
 -- ========================================
 
--- Enable pgvector extension
+-- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Create RAG schema
 CREATE SCHEMA IF NOT EXISTS rag;
