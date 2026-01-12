@@ -1,340 +1,268 @@
 # ALFA - Current Mission Tracker
 
-**Status**: ✅ Mission CORE+RAG Architecture Completed
+**Status**: 🔄 EN COURS - MCP Tool Discovery Implementation
 **Last Update**: 2026-01-12
+**Started**: 2026-01-12 12:00
 
 ---
 
-## Current Mission: CORE + RAG Architecture (2026-01-12)
+## Current Mission: MCP Tool Discovery (2026-01-12)
 
-**Status**: ✅ 100% COMPLÉTÉ
-**Durée**: ~2 heures
-**Commits**: 4
+**Status**: 🔄 EN COURS
+**Durée estimée**: 2-3 heures
+**Méthode**: INTAKE → AUDIT → PLAN → BUILD → PROVE
 
 ### Objectif
 
-Implémenter architecture hybride **CORE + RAG** pour résoudre saturation context window:
-- **CORE** (5-10K tokens) : Règles absolues, identité, 5 phases ALFA → Toujours chargé
-- **RAG** (illimité) : Docs techniques, exemples, troubleshooting → Requêtes à la demande
+Créer système de découverte et recherche d'outils MCP dans RAG pour :
+- **Problème** : Agent ne sait pas quels outils MCP exister sans lister tous les serveurs
+- **Solution** : Index des outils MCP dans PostgreSQL avec recherche sémantique
+- **Bénéfice** : Réduction 99% tokens (50K+ → ~500 tokens) + recherche précise
 
-### Réalisations
+### Architecture
 
-#### ✅ PHASE 1: Push GitHub État Actuel
-- Ajout archives manquants (.mcp/)
-- Push 18 commits (13eff55..6916b5d)
-- **Commit**: `6916b5d`
-
-#### ✅ PHASE 2: Tests RAG
-**2.1 Persistence**:
-- Container restart testé
-- Data PostgreSQL persistante ✅
-- Volume Docker fonctionnel ✅
-
-**2.2 Fonctionnalité**:
-- Extensions vérifiées: `vector 0.8.1`, `pgcrypto 1.3` ✅
-- Schéma RAG: 3 tables (documents, chunks, embeddings) ✅
-- 6 fonctions: ingest, chunk, store_embedding, search_vector, search_fulltext, search_hybrid ✅
-- Test `search_fulltext()`: Fonctionne ✅
-- **Limitation identifiée**: `chunk_document()` a des problèmes de performance (processus bloqués)
-
-#### ✅ PHASE 3: Création CORE + Ingestion RAG
-
-**3.1 CORE.md Créé** (`docs/00-CORE.md`, 465 lignes, 11KB):
-- Identité agent ALFA
-- 5 règles absolues:
-  1. NO MOCK - Zéro placeholder
-  2. PROVE IT - Preuves obligatoires
-  3. Git commits fréquents
-  4. TodoWrite systématique
-  5. RAG Query - Quand chercher
-- 5 phases ALFA (INTAKE, AUDIT, PLAN, BUILD, PROVE)
-- Signaux de désalignement
-- Workflow décisionnel RAG
-- Checklist pré-réponse
-- **Commit**: `b7ab9c7`
-
-**3.2 Documents Ingérés dans RAG** (7 docs, 59KB):
-- `MCP Gateway - Guide Complet` (21KB, ae5e70cf)
-- `MCP Quick Start pour Agents IA` (6KB, 93061b1c)
-- `RAG Knowledge Base` (14KB, efee883a)
-- `Slack Integration` (2KB, 5baa83e7)
-- `VPS Deployment Guide` (7KB, 34f40506)
-- `n8n Workflows Documentation` (9KB, de130a6b)
-- Test document (189 bytes, 53386ef4)
-
-**3.3 Helper SQL Créé** (`04-rag-helpers.sql`, 235 lignes):
-- `rag.search_alfa()` - Recherche simplifiée avec filtres
-- `rag.get_document_by_title()` - Trouver docs par nom
-- `rag.get_document_chunks()` - Récupérer chunks
-- `rag.stats()` - Statistiques système
-- `rag.recent_documents()` - Docs récents
-- Index optimisé: category + priority
-- **Commit**: `6880025`
-
-#### ✅ PHASE 4: Nettoyage Repository
-- Suppression 6 docs techniques du repo (2,723 lignes)
-- Docs supprimés:
-  * MCP-GATEWAY.md
-  * MCP-QUICKSTART.md
-  * RAG.md
-  * SLACK-SETUP.md
-  * VPS-DEPLOYMENT.md
-  * WORKFLOWS.md
-- Docs conservés dans repo:
-  * `00-CORE.md` (règles absolues)
-  * `ALFA-METHOD.md` (identité)
-  * `FAISABILITE-COMPLETE.md` (faisabilité projet)
-- **Commit**: `e9f83ba`
-
----
-
-## 📊 Statistiques Finales
-
-| Métrique | Valeur |
-|----------|--------|
-| **Documents RAG** | 7 |
-| **Taille RAG** | 59 KB |
-| **Docs par catégorie** | mcp: 2, technical: 1, automation: 1, deployment: 1, integration: 1, test: 1 |
-| **Docs par priorité** | P1: 5, P2: 2 |
-| **Chunks créés** | 1 (limitation technique) |
-| **Embeddings** | 0 (nécessite service externe) |
-| **Docs supprimés du repo** | 6 (2,723 lignes) |
-| **CORE.md** | 465 lignes, ~5K tokens |
-| **Helper functions** | 5 |
-| **Commits Git** | 4 |
-
----
-
-## ✅ PROVE - Preuves de Fonctionnement
-
-### Preuve 1: CORE.md Créé
-
-```bash
-ls -lh docs/00-CORE.md
 ```
-
-**Output**:
-```
--rw-------  1 arnaud  staff    11K 12 janv. 11:52 docs/00-CORE.md
-```
-
-### Preuve 2: Documents Ingérés dans RAG
-
-```bash
-docker exec alfa-postgres psql -U alfa -d alfa -c "SELECT COUNT(*), SUM(content_length)/1024 as total_kb FROM rag.documents;"
-```
-
-**Output**:
-```
- count | total_kb
--------+----------
-     7 |       58
-```
-
-### Preuve 3: RAG Stats Function
-
-```bash
-docker exec alfa-postgres psql -U alfa -d alfa -x -c "SELECT * FROM rag.stats();"
-```
-
-**Output**:
-```
-total_documents       | 7
-total_chunks          | 1
-total_embeddings      | 0
-total_content_kb      | 58
-documents_by_category | {"mcp": 2, "test": 1, "technical": 1, "automation": 1, "deployment": 1, "integration": 1}
-documents_by_priority | {"P1": 5, "P2": 2}
-documents_by_status   | {"pending": 7}
-```
-
-### Preuve 4: Helper Functions Created
-
-```bash
-docker exec alfa-postgres psql -U alfa -d alfa -c "\df rag.search_alfa"
-```
-
-**Output**:
-```
- Schema |    Name     | Result data type | Argument data types
---------+-------------+------------------+---------------------
- rag    | search_alfa | TABLE(...)       | p_question text...
-```
-
-### Preuve 5: Technical Docs Deleted
-
-```bash
-git show --stat e9f83ba
-```
-
-**Output**:
-```
- 6 files changed, 2723 deletions(-)
- delete mode 100644 docs/MCP-GATEWAY.md
- delete mode 100644 docs/MCP-QUICKSTART.md
- delete mode 100644 docs/RAG.md
- delete mode 100644 docs/SLACK-SETUP.md
- delete mode 100644 docs/VPS-DEPLOYMENT.md
- delete mode 100644 docs/WORKFLOWS.md
-```
-
-### Preuve 6: Git Log
-
-```bash
-git log --oneline -4
-```
-
-**Output**:
-```
-e9f83ba chore(docs): move technical docs to RAG database
-6880025 feat(rag): add helper functions for AI agents
-b7ab9c7 docs(core): add ALFA core rules v2.0 with RAG integration
-6916b5d docs: archive RAG and MCP documentation summaries
+Agent IA
+   ↓
+"Je veux envoyer notification Slack"
+   ↓
+rag.search_mcp_tools_simple('slack notification', 5)
+   ↓
+Résultats: slack-mcp → send_message (score: 0.95)
+   ↓
+Agent utilise l'outil exact
 ```
 
 ---
 
-## 🎯 Architecture CORE + RAG Complétée
+## Checklist Mission
 
-### CORE (Repository - Toujours Chargé)
+### ✅ Phase INTAKE
+- [x] Besoin identifié : MCP Tool Discovery
+- [x] Objectif défini : Index + recherche sémantique
+- [x] CURRENT.md créé
 
-**Fichiers** (3):
-1. `docs/00-CORE.md` - Règles absolues, 5 phases, identité
-2. `docs/ALFA-METHOD.md` - Vue d'ensemble méthode
-3. `docs/FAISABILITE-COMPLETE.md` - Faisabilité projet
+### ⏳ Phase AUDIT
+- [ ] Backup base de données
+- [ ] Vérifier schéma RAG actuel
+- [ ] Lister serveurs MCP disponibles
 
-**Taille totale**: ~15-20KB (~10K tokens)
+### ⏳ Phase PLAN
+- [ ] Plan détaillé validé (voir ci-dessous)
 
-**Contenu**:
-- ✅ Identité agent
-- ✅ 5 règles absolues (NO MOCK, PROVE IT, etc.)
-- ✅ 5 phases ALFA
-- ✅ Signaux désalignement
-- ✅ Workflow décisionnel RAG
+### ⏳ Phase BUILD
+- [ ] **Étape 2** : Backup base (CRITIQUE)
+- [ ] **Étape 3** : Créer schéma SQL (tables)
+- [ ] **Étape 4** : Créer fonctions recherche
+- [ ] **Étape 5** : Script Python indexation
+- [ ] **Étape 6** : Tester indexation
+- [ ] **Étape 7** : Optimiser index
+- [ ] **Étape 8** : Documentation
 
-### RAG (PostgreSQL - Requêtes à la demande)
+### ⏳ Phase PROVE
+- [ ] Backup vérifié
+- [ ] Tables créées
+- [ ] Fonctions testées
+- [ ] Outils indexés
+- [ ] Recherche fonctionne
+- [ ] Métriques validées
 
-**Documents** (7):
-- MCP Gateway guide complet
-- MCP Quick Start
-- RAG Knowledge Base
-- Slack Integration
-- VPS Deployment
-- n8n Workflows
-- Test document
+---
 
-**Taille totale**: 59 KB (extensible à l'infini)
+## Plan Détaillé
 
-**Fonctions d'accès**:
+### Étape 2 : Backup (5 min)
+**Objectif** : Sauvegarder base AVANT modifications
+
+**Commandes** :
+```bash
+mkdir -p backups/
+docker exec alfa-postgres pg_dump -U alfa alfa > backups/backup_alfa_mcp_$(date +%Y%m%d_%H%M%S).sql
+ls -lh backups/ | tail -1
+```
+
+**Preuve attendue** : Fichier backup créé (~XXX KB)
+
+---
+
+### Étape 3 : Schéma SQL (10 min)
+**Objectif** : Tables `mcp_servers` et `mcp_tools`
+
+**Fichier** : `alfa-dashboard/postgres/init/05-mcp-discovery.sql`
+
+**Tables** :
+- `rag.mcp_servers` (id, name, description, status, config)
+- `rag.mcp_tools` (id, server_id, name, description, parameters, usage_count)
+
+**Preuve attendue** : `\dt rag.*` montre 2 nouvelles tables
+
+---
+
+### Étape 4 : Fonctions Recherche (15 min)
+**Objectif** : Fonctions SQL pour recherche outils
+
+**Fonctions** :
+- `rag.index_mcp_server()` - Indexer serveur
+- `rag.index_mcp_tool()` - Indexer outil
+- `rag.search_mcp_tools()` - Recherche fulltext
+- `rag.search_mcp_tools_simple()` - Recherche simplifiée
+- `rag.list_mcp_servers()` - Liste serveurs
+
+**Preuve attendue** : `\df rag.*mcp*` montre 5 fonctions
+
+---
+
+### Étape 5 : Script Python (20 min)
+**Objectif** : Script pour scanner et indexer outils MCP
+
+**Fichier** : `scripts/index-mcp-tools.py`
+
+**Logique** :
+1. Lire serveurs MCP depuis docker/mcp-gateway
+2. Parser outils disponibles
+3. Insérer dans `rag.mcp_tools`
+
+**Preuve attendue** : `SELECT COUNT(*) FROM rag.mcp_tools` > 100
+
+---
+
+### Étape 6 : Test Indexation (10 min)
+**Objectif** : Vérifier outils indexés correctement
+
+**Tests** :
 ```sql
--- Recherche simplifiée
-SELECT * FROM rag.search_alfa('votre question', 10);
+SELECT * FROM rag.list_mcp_servers();
+SELECT COUNT(*) FROM rag.mcp_tools;
+SELECT * FROM rag.search_mcp_tools_simple('slack', 3);
+```
 
--- Stats système
-SELECT * FROM rag.stats();
+**Preuve attendue** : Résultats pertinents
 
--- Documents récents
-SELECT * FROM rag.recent_documents(10);
+---
+
+### Étape 7 : Optimisation Index (10 min)
+**Objectif** : Index GIN pour performance
+
+**Index** :
+- GIN sur `to_tsvector(description)`
+- B-tree sur `server_id`
+- B-tree sur `usage_count`
+
+**Preuve attendue** : `\di rag.*` montre nouveaux index
+
+---
+
+### Étape 8 : Documentation (15 min)
+**Objectif** : Doc usage pour agents IA
+
+**Fichier** : `docs/MCP-TOOL-DISCOVERY.md`
+
+**Contenu** :
+- Comment rechercher outils
+- Exemples requêtes
+- Métriques réduction tokens
+
+**Preuve attendue** : Fichier créé, ~300 lignes
+
+---
+
+## Métriques Cibles
+
+| Métrique | Avant | Après | Objectif |
+|----------|-------|-------|----------|
+| Tokens démarrage | ~50K+ | ~500 | 99% réduction |
+| Serveurs indexés | 0 | 10+ | Tous actifs |
+| Outils indexés | 0 | 125+ | Tous MCP |
+| Précision recherche | N/A | 90%+ | High relevance |
+| Temps recherche | N/A | <100ms | Fast |
+
+---
+
+## Preuves Attendues (PROVE)
+
+### 1. Backup Créé
+```bash
+ls -lh backups/backup_alfa_mcp_*.sql
+```
+
+### 2. Tables Créées
+```bash
+docker exec alfa-postgres psql -U alfa -d alfa -c "\dt rag.*"
+```
+
+### 3. Fonctions Créées
+```bash
+docker exec alfa-postgres psql -U alfa -d alfa -c "\df rag.*mcp*"
+```
+
+### 4. Serveurs Indexés
+```bash
+docker exec alfa-postgres psql -U alfa -d alfa -c "SELECT * FROM rag.list_mcp_servers();"
+```
+
+### 5. Outils Indexés
+```bash
+docker exec alfa-postgres psql -U alfa -d alfa -c "SELECT COUNT(*) FROM rag.mcp_tools;"
+```
+
+### 6. Recherche Fonctionne
+```bash
+docker exec alfa-postgres psql -U alfa -d alfa -c "SELECT * FROM rag.search_mcp_tools_simple('slack message', 3);"
 ```
 
 ---
 
-## ⚠️ Limitations Techniques Identifiées
+## Commits Git Prévus
 
-### 1. Chunking Performance
-**Problème**: `rag.chunk_document()` bloque/timeout
-**Symptômes**:
-- Processus PostgreSQL actifs mais bloqués
-- Checkpoints fréquents (toutes les 5-6 sec)
-- Pas de chunks créés malgré documents ingérés
-
-**Cause probable**:
-- Ressources container limitées
-- Configuration WAL PostgreSQL sous-dimensionnée
-- Locks sur tables chunks
-
-**Solutions possibles**:
-1. Augmenter `max_wal_size` dans postgresql.conf
-2. Chunker documents en dehors du container (Python script)
-3. Chunker par petits batches avec commits explicites
-
-**Impact**: Documents queryables via `rag.search_fulltext()` une fois chunkés
-
-### 2. Vector Search Non Testé
-**Raison**: Pas de service d'embeddings configuré
-**Fonctions disponibles mais non testées**:
-- `rag.search_vector()`
-- `rag.search_hybrid()`
-
-**Requis pour activer**: Service OpenAI API ou modèle local (sentence-transformers)
+1. `feat(mcp): create discovery schema (tables + functions)`
+2. `feat(mcp): add indexation script for MCP tools`
+3. `feat(mcp): optimize search with GIN indexes`
+4. `docs(mcp): add tool discovery documentation`
+5. `feat(mcp): complete tool discovery system`
 
 ---
 
-## 🚀 Prochaines Étapes (Hors Scope Mission)
+## Rollback Plan
 
-1. **Résoudre chunking**:
-   - Ajuster config PostgreSQL
-   - Script Python externe pour chunking
-   - Chunker les 7 documents ingérés
+Si problème critique :
+```bash
+# Restaurer backup
+docker exec -i alfa-postgres psql -U alfa alfa < backups/backup_alfa_mcp_XXXXXX.sql
 
-2. **Activer Vector Search**:
-   - Configurer service embeddings (OpenAI ou local)
-   - Générer embeddings pour tous chunks
-   - Tester `rag.search_hybrid()`
+# Ou supprimer tables
+docker exec alfa-postgres psql -U alfa -d alfa -c "
+DROP TABLE IF EXISTS rag.mcp_tools CASCADE;
+DROP TABLE IF EXISTS rag.mcp_servers CASCADE;
+"
+```
 
-3. **Documentation Additionnelle**:
-   - Ingérer README.md, CHANGELOG.md
-   - Ajouter docs Backstage, n8n workflows JSON
-   - Catégoriser par type (guide, reference, troubleshooting)
+---
 
-4. **Monitoring RAG**:
-   - Dashboard Grafana pour stats RAG
-   - Alertes si RAG indisponible
-   - Métriques usage (queries/sec, temps réponse)
+## Règles Absolues
+
+1. ✅ **BACKUP AVANT TOUT** - Étape 2 non négociable
+2. ✅ **COMMITS FRÉQUENTS** - Après chaque étape réussie
+3. ✅ **PROVE IT** - Montrer résultats commandes
+4. ✅ **STOP SI ERREUR** - Ne pas continuer si échec
+5. ✅ **PAS DE MOCK** - Vraies commandes uniquement
 
 ---
 
 ## Previous Missions
 
-### Mission 2: Documentation MCP Gateway (2026-01-12)
+### Mission 3: CORE + RAG Architecture (2026-01-12)
 **Status**: ✅ 100% COMPLÉTÉ
 
 **Réalisations**:
-- ✅ Documentation complète MCP Gateway (125 outils)
-- ✅ docs/MCP-GATEWAY.md (922 lignes) → Maintenant dans RAG
-- ✅ docs/MCP-QUICKSTART.md (298 lignes) → Maintenant dans RAG
-- ✅ 8 workflows documentés
-- ✅ 1 commit Git (11c78f1)
+- ✅ CORE.md créé (465 lignes)
+- ✅ 7 documents ingérés RAG (59KB)
+- ✅ 5 helper SQL functions
+- ✅ 6 docs techniques supprimés (2,723 lignes)
+- ✅ 5 commits Git
 
-📁 Archive: [.mcp/MCP-MISSION-SUMMARY-20260112.md](.mcp/MCP-MISSION-SUMMARY-20260112.md)
-
----
-
-### Mission 1: RAG Implementation (2026-01-12)
-**Status**: ✅ 100% COMPLÉTÉ
-
-**Réalisations**:
-- ✅ PostgreSQL + pgvector integration
-- ✅ RAG schema (documents, chunks, embeddings)
-- ✅ 6 SQL functions for hybrid search
-- ✅ Complete documentation (maintenant dans RAG database)
-
-📁 Archive: [.mcp/CURRENT-RAG-20260112.md](.mcp/CURRENT-RAG-20260112.md)
-
----
-
-## Next Mission
-
-À définir par l'utilisateur.
-
-Utilise ce fichier pour tracker la progression selon la **Méthode ALFA** :
-- **INTAKE** - Comprendre le besoin
-- **AUDIT** - État des lieux
-- **PLAN** - Checklist détaillée
-- **BUILD** - Implémentation avec commits fréquents
-- **PROVE** - Preuves tangibles
+📁 Archive: Voir section "Previous Missions" dans version précédente
 
 ---
 
 **🤖 ALFA Mission Tracker v2.0**
-**Architecture**: CORE (repo) + RAG (database) ✅
+**Current**: MCP Tool Discovery 🔄
