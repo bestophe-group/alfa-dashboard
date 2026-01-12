@@ -1,0 +1,343 @@
+{
+  "name": "iana-documentation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "documentation",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-documentation",
+      "name": "Webhook Documentation",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "iana-documentation-crud"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validation commune AVANT Switch\nconst body = $input.first().json.body || $input.first().json;\nconst { action, data, user_id, channel } = body;\n\n// Validation action\nif (!action) {\n  throw new Error('VALIDATION_ERROR: action is required');\n}\n\n// Validation user_id\nif (!user_id) {\n  throw new Error('VALIDATION_ERROR: user_id is required');\n}\n\n// Validation actions valides\nconst validActions = ['generate', 'update', 'list'];\nif (!validActions.includes(action)) {\n  throw new Error(`VALIDATION_ERROR: action must be one of: ${validActions.join(', ')}`);\n}\n\n// Ajouter metadata\nreturn [{\n  json: {\n    action: action,\n    data: data || {},\n    user_id: user_id,\n    channel: channel || 'api',\n    _meta: {\n      startTime: Date.now(),\n      requestId: `${user_id}-${Date.now()}`\n    }\n  }\n}];"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "generate"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "update"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "list"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "switch-action",
+      "name": "Switch Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: generate - Générer documentation complète\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\n// Configuration des workflows\nconst workflowsConfig = {\"iana-rag-document\": {\"endpoint\": \"rag/document\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"search\", \"chunk\"], \"description\": \"Gestion des documents RAG (CRUD complet)\"}, \"iana-tool\": {\"endpoint\": \"tool\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"search\", \"execute\"], \"description\": \"Gestion des outils MCP (CRUD + ex\\u00e9cution)\"}, \"iana-credential\": {\"endpoint\": \"credential\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"test\"], \"description\": \"Gestion des credentials n8n (CRUD + test)\"}, \"iana-workflow\": {\"endpoint\": \"workflow\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"activate\", \"deactivate\", \"test\", \"execute\"], \"description\": \"Gestion des workflows n8n (CRUD + activation + ex\\u00e9cution)\"}, \"iana-docker\": {\"endpoint\": \"docker\", \"actions\": [\"status\", \"start\", \"stop\", \"restart\", \"logs\", \"inspect\", \"cleanup\"], \"description\": \"Gestion des conteneurs Docker\"}, \"iana-postgres\": {\"endpoint\": \"postgres\", \"actions\": [\"query\", \"backup\", \"restore\", \"vacuum\", \"analyze\", \"status\"], \"description\": \"Gestion de PostgreSQL (queries, backup, maintenance)\"}, \"iana-backup\": {\"endpoint\": \"backup\", \"actions\": [\"create\", \"list\", \"restore\", \"delete\", \"schedule\"], \"description\": \"Gestion des sauvegardes (CRUD + planification)\"}, \"iana-security\": {\"endpoint\": \"security\", \"actions\": [\"audit\", \"scan\", \"report\", \"alert\"], \"description\": \"S\\u00e9curit\\u00e9 (audit, scan, alertes)\"}, \"iana-redis\": {\"endpoint\": \"redis\", \"actions\": [\"get\", \"set\", \"delete\", \"list\", \"flush\", \"info\", \"status\"], \"description\": \"Gestion de Redis (cache, donn\\u00e9es)\"}, \"iana-monitoring\": {\"endpoint\": \"monitoring\", \"actions\": [\"query\", \"alert\", \"dashboard\", \"status\"], \"description\": \"Monitoring (Prometheus, Grafana)\"}};\n\nconst workflowName = data.workflow_name || null;\nconst format = data.format || 'markdown';\n\nlet workflowsToDocument = [];\nif (workflowName) {\n  if (workflowsConfig[workflowName]) {\n    workflowsToDocument = [{ name: workflowName, config: workflowsConfig[workflowName] }];\n  } else {\n    return [{\n      json: {\n        success: false,\n        errorCode: 'VALIDATION_ERROR',\n        errorMessage: `Workflow ${workflowName} not found`,\n        action: 'generate'\n      }\n    }];\n  }\n} else {\n  // Tous les workflows\n  workflowsToDocument = Object.entries(workflowsConfig).map(([name, config]) => ({\n    name,\n    config\n  }));\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'generate',\n    workflows_to_document: workflowsToDocument,\n    format: format,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-generate",
+      "name": "Prepare Documentation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Générer documentation Markdown\nconst input = $input.first().json;\nconst { workflows_to_document, format, user_id } = input;\n\n// Configuration des workflows\nconst workflowsConfig = {\"iana-rag-document\": {\"endpoint\": \"rag/document\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"search\", \"chunk\"], \"description\": \"Gestion des documents RAG (CRUD complet)\"}, \"iana-tool\": {\"endpoint\": \"tool\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"search\", \"execute\"], \"description\": \"Gestion des outils MCP (CRUD + ex\\u00e9cution)\"}, \"iana-credential\": {\"endpoint\": \"credential\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"test\"], \"description\": \"Gestion des credentials n8n (CRUD + test)\"}, \"iana-workflow\": {\"endpoint\": \"workflow\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"activate\", \"deactivate\", \"test\", \"execute\"], \"description\": \"Gestion des workflows n8n (CRUD + activation + ex\\u00e9cution)\"}, \"iana-docker\": {\"endpoint\": \"docker\", \"actions\": [\"status\", \"start\", \"stop\", \"restart\", \"logs\", \"inspect\", \"cleanup\"], \"description\": \"Gestion des conteneurs Docker\"}, \"iana-postgres\": {\"endpoint\": \"postgres\", \"actions\": [\"query\", \"backup\", \"restore\", \"vacuum\", \"analyze\", \"status\"], \"description\": \"Gestion de PostgreSQL (queries, backup, maintenance)\"}, \"iana-backup\": {\"endpoint\": \"backup\", \"actions\": [\"create\", \"list\", \"restore\", \"delete\", \"schedule\"], \"description\": \"Gestion des sauvegardes (CRUD + planification)\"}, \"iana-security\": {\"endpoint\": \"security\", \"actions\": [\"audit\", \"scan\", \"report\", \"alert\"], \"description\": \"S\\u00e9curit\\u00e9 (audit, scan, alertes)\"}, \"iana-redis\": {\"endpoint\": \"redis\", \"actions\": [\"get\", \"set\", \"delete\", \"list\", \"flush\", \"info\", \"status\"], \"description\": \"Gestion de Redis (cache, donn\\u00e9es)\"}, \"iana-monitoring\": {\"endpoint\": \"monitoring\", \"actions\": [\"query\", \"alert\", \"dashboard\", \"status\"], \"description\": \"Monitoring (Prometheus, Grafana)\"}};\n\nif (format !== 'markdown') {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: `Format ${format} not supported (only markdown)`,\n      action: 'generate'\n    }\n  }];\n}\n\nlet markdown = `# Documentation IANA - Workflows API\\n\\n`;\nmarkdown += `> Documentation générée le ${new Date().toISOString()}\\n\\n`;\nmarkdown += `## Vue d'ensemble\\n\\n`;\nmarkdown += `Cette documentation décrit tous les workflows IANA disponibles via leurs endpoints webhook.\\n\\n`;\nmarkdown += `**Total workflows:** ${workflows_to_document.length}\\n\\n`;\nmarkdown += `---\\n\\n`;\n\nfor (const { name, config } of workflows_to_document) {\n  markdown += `## ${name}\\n\\n`;\n  markdown += `**Description:** ${config.description || 'N/A'}\\n\\n`;\n  markdown += `**Endpoint:** \\`/webhook/${config.endpoint}\\`\\n\\n`;\n  markdown += `**Actions disponibles:** ${config.actions.length}\\n\\n`;\n  \n  markdown += `### Actions\\n\\n`;\n  for (const action of config.actions) {\n    markdown += `#### ${action}\\n\\n`;\n    markdown += `**Request:**\\n\\n`;\n    markdown += `\\`\\`\\`json\\n`;\n    markdown += `{\\n`;\n    markdown += `  \"action\": \"${action}\",\\n`;\n    markdown += `  \"user_id\": \"string\",\\n`;\n    markdown += `  \"data\": {}\\n`;\n    markdown += `}\\n`;\n    markdown += `\\`\\`\\`\\n\\n`;\n    \n    markdown += `**Exemple curl:**\\n\\n`;\n    markdown += `\\`\\`\\`bash\\n`;\n    markdown += `curl -X POST \"http://localhost:5678/webhook/${config.endpoint}\" \\\\\\n`;\n    markdown += `  -H \"Content-Type: application/json\" \\\\\\n`;\n    markdown += `  -d '{\\n`;\n    markdown += `    \"action\": \"${action}\",\\n`;\n    markdown += `    \"user_id\": \"test\",\\n`;\n    markdown += `    \"data\": {}\\n`;\n    markdown += `  }'\\n`;\n    markdown += `\\`\\`\\`\\n\\n`;\n    \n    markdown += `**Response (success):**\\n\\n`;\n    markdown += `\\`\\`\\`json\\n`;\n    markdown += `{\\n`;\n    markdown += `  \"success\": true,\\n`;\n    markdown += `  \"action\": \"${action}\",\\n`;\n    markdown += `  \"data\": {},\\n`;\n    markdown += `  \"error\": null,\\n`;\n    markdown += `  \"meta\": {\\n`;\n    markdown += `    \"latency_ms\": 123,\\n`;\n    markdown += `    \"timestamp\": \"2025-01-12T12:00:00.000Z\",\\n`;\n    markdown += `    \"request_id\": \"test-1234567890\"\\n`;\n    markdown += `  }\\n`;\n    markdown += `}\\n`;\n    markdown += `\\`\\`\\`\\n\\n`;\n    \n    markdown += `---\\n\\n`;\n  }\n  \n  markdown += `\\n`;\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'generate',\n    documentation: markdown,\n    format: format,\n    workflows_count: workflows_to_document.length,\n    user_id: user_id,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "generate-markdown",
+      "name": "Generate Markdown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: update - Mettre à jour documentation\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\n// Pour l'instant, update = generate (régénération complète)\nreturn [{\n  json: {\n    success: true,\n    action: 'update',\n    message: 'Update = regenerate documentation',\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-update",
+      "name": "Prepare Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: list - Lister workflows documentés\nconst input = $input.first().json;\nconst { user_id } = input;\n\n// Configuration des workflows\nconst workflowsConfig = {\"iana-rag-document\": {\"endpoint\": \"rag/document\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"search\", \"chunk\"], \"description\": \"Gestion des documents RAG (CRUD complet)\"}, \"iana-tool\": {\"endpoint\": \"tool\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"search\", \"execute\"], \"description\": \"Gestion des outils MCP (CRUD + ex\\u00e9cution)\"}, \"iana-credential\": {\"endpoint\": \"credential\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"test\"], \"description\": \"Gestion des credentials n8n (CRUD + test)\"}, \"iana-workflow\": {\"endpoint\": \"workflow\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"activate\", \"deactivate\", \"test\", \"execute\"], \"description\": \"Gestion des workflows n8n (CRUD + activation + ex\\u00e9cution)\"}, \"iana-docker\": {\"endpoint\": \"docker\", \"actions\": [\"status\", \"start\", \"stop\", \"restart\", \"logs\", \"inspect\", \"cleanup\"], \"description\": \"Gestion des conteneurs Docker\"}, \"iana-postgres\": {\"endpoint\": \"postgres\", \"actions\": [\"query\", \"backup\", \"restore\", \"vacuum\", \"analyze\", \"status\"], \"description\": \"Gestion de PostgreSQL (queries, backup, maintenance)\"}, \"iana-backup\": {\"endpoint\": \"backup\", \"actions\": [\"create\", \"list\", \"restore\", \"delete\", \"schedule\"], \"description\": \"Gestion des sauvegardes (CRUD + planification)\"}, \"iana-security\": {\"endpoint\": \"security\", \"actions\": [\"audit\", \"scan\", \"report\", \"alert\"], \"description\": \"S\\u00e9curit\\u00e9 (audit, scan, alertes)\"}, \"iana-redis\": {\"endpoint\": \"redis\", \"actions\": [\"get\", \"set\", \"delete\", \"list\", \"flush\", \"info\", \"status\"], \"description\": \"Gestion de Redis (cache, donn\\u00e9es)\"}, \"iana-monitoring\": {\"endpoint\": \"monitoring\", \"actions\": [\"query\", \"alert\", \"dashboard\", \"status\"], \"description\": \"Monitoring (Prometheus, Grafana)\"}};\n\nconst workflowsList = Object.entries(workflowsConfig).map(([name, config]) => ({\n  name,\n  endpoint: config.endpoint,\n  description: config.description || 'N/A',\n  actions_count: config.actions.length,\n  actions: config.actions\n}));\n\nreturn [{\n  json: {\n    success: true,\n    action: 'list',\n    workflows: workflowsList,\n    total_count: workflowsList.length,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-list",
+      "name": "List Workflows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll"
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        1350,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT iana.log_operation($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) as log_id",
+        "additionalFields": {
+          "queryParameters": "={{ ['iana-documentation', $('Validate Input').first().json.action, $('Validate Input').first().json.user_id, 'api', JSON.stringify($('Validate Input').first().json.data || {}), JSON.stringify($json), $json.success !== false, $json.errorCode || null, $json.errorMessage || null, Date.now() - ($('Validate Input').first().json._meta?.startTime || Date.now()), $('Validate Input').first().json._meta?.requestId || null] }}"
+        },
+        "options": {}
+      },
+      "id": "log-operation",
+      "name": "Log Operation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1570,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Response Standardisée\nconst input = $input.first().json;\nconst validation = $('Validate Input').first().json;\nconst startTime = validation._meta?.startTime || Date.now();\n\n// Success case\nif (input.success !== false && !input.isError) {\n  return [{\n    json: {\n      success: true,\n      action: validation.action,\n      data: input,\n      error: null,\n      meta: {\n        latency_ms: Date.now() - startTime,\n        timestamp: new Date().toISOString(),\n        request_id: validation._meta?.requestId\n      }\n    }\n  }];\n}\n\n// Error case\nreturn [{\n  json: {\n    success: false,\n    action: validation.action,\n    data: null,\n    error: {\n      code: input.errorCode || 'UNKNOWN_ERROR',\n      message: input.errorMessage || input.message || 'An error occurred'\n    },\n    meta: {\n      latency_ms: Date.now() - startTime,\n      timestamp: new Date().toISOString(),\n      request_id: validation._meta?.requestId\n    }\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1790,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2010,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Documentation": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Switch Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Action": {
+      "main": [
+        [
+          {
+            "node": "Prepare Documentation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "List Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Documentation": {
+      "main": [
+        [
+          {
+            "node": "Generate Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Markdown": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Update": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Workflows": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Log Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Operation": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "Documentation"
+    },
+    {
+      "name": "P1"
+    }
+  ],
+  "active": false
+}

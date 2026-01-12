@@ -1,0 +1,82 @@
+{
+  "name": "iana-rag-create",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Parse RAG create request\nconst input = $input.first().json.data || $input.first().json;\n\nif (!input.title || !input.content) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'title and content are required'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    title: input.title,\n    content: input.content,\n    category: input.category || null,\n    metadata: input.metadata || {},\n    created_by: input.created_by || 'system'\n  }\n}];"
+      },
+      "id": "parse-input",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO rag.documents (title, content, category, metadata, created_by) VALUES ($1, $2, $3, $4::jsonb, $5) RETURNING doc_id, title, category, created_at",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.title, $json.content, $json.category, JSON.stringify($json.metadata), $json.created_by] }}"
+        },
+        "options": {}
+      },
+      "id": "db-create",
+      "name": "DB Create",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [460, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-iana",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format response\nconst result = $input.first().json;\n\nreturn [{\n  json: {\n    success: true,\n    data: result\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "DB Create",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB Create": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "RAG"
+    }
+  ]
+}

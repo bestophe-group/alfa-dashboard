@@ -1,0 +1,658 @@
+{
+  "name": "iana-docker",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "docker",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-docker",
+      "name": "Webhook Docker",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "iana-docker-crud"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validation commune AVANT Switch\nconst body = $input.first().json.body || $input.first().json;\nconst { action, data, user_id, channel } = body;\n\n// Validation action\nif (!action) {\n  throw new Error('VALIDATION_ERROR: action is required');\n}\n\n// Validation user_id\nif (!user_id) {\n  throw new Error('VALIDATION_ERROR: user_id is required');\n}\n\n// Validation actions valides\nconst validActions = ['status', 'start', 'stop', 'restart', 'logs', 'inspect', 'cleanup'];\nif (!validActions.includes(action)) {\n  throw new Error(`VALIDATION_ERROR: action must be one of: ${validActions.join(', ')}`);\n}\n\n// Ajouter metadata\nreturn [{\n  json: {\n    action: action,\n    data: data || {},\n    user_id: user_id,\n    channel: channel || 'api',\n    _meta: {\n      startTime: Date.now(),\n      requestId: `${user_id}-${Date.now()}`\n    }\n  }\n}];"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "status"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "start"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "stop"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "restart"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "logs"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "inspect"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "cleanup"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "switch-action",
+      "name": "Switch Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: status\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nconst container = data.container || null;\n\nreturn [{\n  json: {\n    success: true,\n    action: 'status',\n    container: container,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-status",
+      "name": "Status Docker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute Docker Command: status\nconst { execSync } = require('child_process');\nconst input = $input.first().json;\n\nlet command;\n\n  command = `docker ps -a --format 'json' | jq -s '.'`;\n\n\ntry {\n  const result = execSync(command, {\n    encoding: 'utf8',\n    maxBuffer: 10 * 1024 * 1024,\n    timeout: 30000\n  });\n  \n  let output;\n  try {\n    output = JSON.parse(result.trim());\n  } catch (e) {\n    output = { raw: result.trim() };\n  }\n  \n  return [{\n    json: {\n      success: true,\n      action: input.action,\n      output: output,\n      command: command\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'DOCKER_ERROR',\n      errorMessage: error.message,\n      stderr: error.stderr?.toString() || '',\n      action: input.action\n    }\n  }];\n}"
+      },
+      "id": "cmd-status",
+      "name": "Execute Status Docker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: start\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.container) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.container is required for start',\n      action: 'start'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'start',\n    container: data.container,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-start",
+      "name": "Start Container",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute Docker Command: start\nconst { execSync } = require('child_process');\nconst input = $input.first().json;\n\nlet command;\nif (input.container) {\n  command = `docker start ${input.container}`;\n}\n\ntry {\n  const result = execSync(command, {\n    encoding: 'utf8',\n    maxBuffer: 10 * 1024 * 1024,\n    timeout: 30000\n  });\n  \n  let output;\n  try {\n    output = JSON.parse(result.trim());\n  } catch (e) {\n    output = { raw: result.trim() };\n  }\n  \n  return [{\n    json: {\n      success: true,\n      action: input.action,\n      output: output,\n      command: command\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'DOCKER_ERROR',\n      errorMessage: error.message,\n      stderr: error.stderr?.toString() || '',\n      action: input.action\n    }\n  }];\n}"
+      },
+      "id": "cmd-start",
+      "name": "Execute Start Container",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: stop\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.container) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.container is required for stop',\n      action: 'stop'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'stop',\n    container: data.container,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-stop",
+      "name": "Stop Container",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute Docker Command: stop\nconst { execSync } = require('child_process');\nconst input = $input.first().json;\n\nlet command;\nif (input.container) {\n  command = `docker stop ${input.container}`;\n}\n\ntry {\n  const result = execSync(command, {\n    encoding: 'utf8',\n    maxBuffer: 10 * 1024 * 1024,\n    timeout: 30000\n  });\n  \n  let output;\n  try {\n    output = JSON.parse(result.trim());\n  } catch (e) {\n    output = { raw: result.trim() };\n  }\n  \n  return [{\n    json: {\n      success: true,\n      action: input.action,\n      output: output,\n      command: command\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'DOCKER_ERROR',\n      errorMessage: error.message,\n      stderr: error.stderr?.toString() || '',\n      action: input.action\n    }\n  }];\n}"
+      },
+      "id": "cmd-stop",
+      "name": "Execute Stop Container",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: restart\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.container) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.container is required for restart',\n      action: 'restart'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'restart',\n    container: data.container,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-restart",
+      "name": "Restart Container",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute Docker Command: restart\nconst { execSync } = require('child_process');\nconst input = $input.first().json;\n\nlet command;\nif (input.container) {\n  command = `docker restart ${input.container}`;\n}\n\ntry {\n  const result = execSync(command, {\n    encoding: 'utf8',\n    maxBuffer: 10 * 1024 * 1024,\n    timeout: 30000\n  });\n  \n  let output;\n  try {\n    output = JSON.parse(result.trim());\n  } catch (e) {\n    output = { raw: result.trim() };\n  }\n  \n  return [{\n    json: {\n      success: true,\n      action: input.action,\n      output: output,\n      command: command\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'DOCKER_ERROR',\n      errorMessage: error.message,\n      stderr: error.stderr?.toString() || '',\n      action: input.action\n    }\n  }];\n}"
+      },
+      "id": "cmd-restart",
+      "name": "Execute Restart Container",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: logs\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.container) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.container is required for logs',\n      action: 'logs'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'logs',\n    container: data.container,\n    tail: data.tail || 100,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-logs",
+      "name": "Get Logs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute Docker Command: logs\nconst { execSync } = require('child_process');\nconst input = $input.first().json;\n\nlet command;\nif (input.container) {\n  command = `docker logs --tail ${input.tail || 100} ${input.container}`;\n}\n\ntry {\n  const result = execSync(command, {\n    encoding: 'utf8',\n    maxBuffer: 10 * 1024 * 1024,\n    timeout: 30000\n  });\n  \n  let output;\n  try {\n    output = JSON.parse(result.trim());\n  } catch (e) {\n    output = { raw: result.trim() };\n  }\n  \n  return [{\n    json: {\n      success: true,\n      action: input.action,\n      output: output,\n      command: command\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'DOCKER_ERROR',\n      errorMessage: error.message,\n      stderr: error.stderr?.toString() || '',\n      action: input.action\n    }\n  }];\n}"
+      },
+      "id": "cmd-logs",
+      "name": "Execute Get Logs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: inspect\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.container) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.container is required for inspect',\n      action: 'inspect'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'inspect',\n    container: data.container,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-inspect",
+      "name": "Inspect Container",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute Docker Command: inspect\nconst { execSync } = require('child_process');\nconst input = $input.first().json;\n\nlet command;\nif (input.container) {\n  command = `docker inspect ${input.container}`;\n}\n\ntry {\n  const result = execSync(command, {\n    encoding: 'utf8',\n    maxBuffer: 10 * 1024 * 1024,\n    timeout: 30000\n  });\n  \n  let output;\n  try {\n    output = JSON.parse(result.trim());\n  } catch (e) {\n    output = { raw: result.trim() };\n  }\n  \n  return [{\n    json: {\n      success: true,\n      action: input.action,\n      output: output,\n      command: command\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'DOCKER_ERROR',\n      errorMessage: error.message,\n      stderr: error.stderr?.toString() || '',\n      action: input.action\n    }\n  }];\n}"
+      },
+      "id": "cmd-inspect",
+      "name": "Execute Inspect Container",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: cleanup\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nreturn [{\n  json: {\n    success: true,\n    action: 'cleanup',\n    pruneImages: data.pruneImages || false,\n    pruneVolumes: data.pruneVolumes || false,\n    pruneContainers: data.pruneContainers || false,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-cleanup",
+      "name": "Cleanup Docker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute Docker Command: cleanup\nconst { execSync } = require('child_process');\nconst input = $input.first().json;\n\nlet command;\n\n  command = `docker system prune -f`;\n\n\ntry {\n  const result = execSync(command, {\n    encoding: 'utf8',\n    maxBuffer: 10 * 1024 * 1024,\n    timeout: 30000\n  });\n  \n  let output;\n  try {\n    output = JSON.parse(result.trim());\n  } catch (e) {\n    output = { raw: result.trim() };\n  }\n  \n  return [{\n    json: {\n      success: true,\n      action: input.action,\n      output: output,\n      command: command\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'DOCKER_ERROR',\n      errorMessage: error.message,\n      stderr: error.stderr?.toString() || '',\n      action: input.action\n    }\n  }];\n}"
+      },
+      "id": "cmd-cleanup",
+      "name": "Execute Cleanup Docker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll"
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        1350,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT iana.log_operation($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) as log_id",
+        "additionalFields": {
+          "queryParameters": "={{ ['iana-docker', $json.action, $json.user_id, $json.channel || 'api', JSON.stringify($json.data || {}), JSON.stringify($json), $json.success !== false, $json.errorCode || null, $json.errorMessage || null, Date.now() - ($json._meta?.startTime || Date.now()), $json._meta?.requestId || null] }}"
+        },
+        "options": {}
+      },
+      "id": "log-operation",
+      "name": "Log Operation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1570,
+        400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Response Standardis\u00e9e\nconst input = $input.first().json;\nconst validation = $('Validate Input').first().json;\nconst startTime = validation._meta?.startTime || Date.now();\n\n// Success case\nif (input.success !== false && !input.isError) {\n  return [{\n    json: {\n      success: true,\n      action: validation.action,\n      data: input.data || input,\n      error: null,\n      meta: {\n        latency_ms: Date.now() - startTime,\n        timestamp: new Date().toISOString(),\n        request_id: validation._meta?.requestId\n      }\n    }\n  }];\n}\n\n// Error case\nreturn [{\n  json: {\n    success: false,\n    action: validation.action,\n    data: null,\n    error: {\n      code: input.errorCode || 'UNKNOWN_ERROR',\n      message: input.errorMessage || input.message || 'An error occurred'\n    },\n    meta: {\n      latency_ms: Date.now() - startTime,\n      timestamp: new Date().toISOString(),\n      request_id: validation._meta?.requestId\n    }\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1790,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2010,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Docker": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Switch Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Action": {
+      "main": [
+        [
+          {
+            "node": "Status Docker",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Start Container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop Container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Restart Container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Logs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Inspect Container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cleanup Docker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Log Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Operation": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Docker": {
+      "main": [
+        [
+          {
+            "node": "Execute Status Docker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Status Docker": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Container": {
+      "main": [
+        [
+          {
+            "node": "Execute Start Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Start Container": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop Container": {
+      "main": [
+        [
+          {
+            "node": "Execute Stop Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Stop Container": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restart Container": {
+      "main": [
+        [
+          {
+            "node": "Execute Restart Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Restart Container": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Logs": {
+      "main": [
+        [
+          {
+            "node": "Execute Get Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Get Logs": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inspect Container": {
+      "main": [
+        [
+          {
+            "node": "Execute Inspect Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Inspect Container": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup Docker": {
+      "main": [
+        [
+          {
+            "node": "Execute Cleanup Docker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Cleanup Docker": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "Infrastructure"
+    },
+    {
+      "name": "P0"
+    },
+    {
+      "name": "Docker"
+    }
+  ],
+  "active": false
+}

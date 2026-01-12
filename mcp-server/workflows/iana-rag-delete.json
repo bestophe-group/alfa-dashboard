@@ -1,0 +1,82 @@
+{
+  "name": "iana-rag-delete",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Parse RAG delete request\nconst input = $input.first().json.data || $input.first().json;\n\nif (!input.doc_id) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'doc_id is required'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    doc_id: input.doc_id\n  }\n}];"
+      },
+      "id": "parse-input",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM rag.documents WHERE doc_id = $1 RETURNING doc_id",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.doc_id] }}"
+        },
+        "options": {}
+      },
+      "id": "db-delete",
+      "name": "DB Delete",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [460, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-iana",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format response\nconst result = $input.first().json;\n\nreturn [{\n  json: {\n    success: true,\n    data: result\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "DB Delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DB Delete": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "RAG"
+    }
+  ]
+}

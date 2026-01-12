@@ -1,0 +1,220 @@
+{
+  "name": "iana-bridge",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bridge",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-bridge",
+      "name": "Webhook Bridge",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "iana-bridge-main"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse bridge request from Claude Desktop\nconst body = $input.first().json.body || $input.first().json;\nconst { request, user_id, channel, workflow } = body;\n\nif (!request) {\n  throw new Error('VALIDATION_ERROR: request is required');\n}\n\n// Router vers workflow approprié\nlet targetWorkflow = workflow || 'iana-router';\nlet targetData = request;\n\n// Auto-détection du workflow si non spécifié\nif (!workflow) {\n  if (request.action) {\n    // CRUD request\n    if (['create', 'read', 'update', 'delete', 'list'].includes(request.action)) {\n      if (request.subject) {\n        targetWorkflow = `iana-${request.subject}`;\n        targetData = request.data || request;\n      } else {\n        targetWorkflow = 'iana-router';\n      }\n    } else {\n      targetWorkflow = 'iana-router';\n    }\n  } else if (request.query) {\n    // Chat/LLM request\n    targetWorkflow = 'iana-router';\n  } else {\n    targetWorkflow = 'iana-router';\n  }\n}\n\nreturn [{\n  json: {\n    targetWorkflow: targetWorkflow,\n    targetData: targetData,\n    user_id: user_id || 'claude-desktop',\n    channel: channel || 'claude',\n    _meta: {\n      startTime: Date.now(),\n      requestId: `bridge-${Date.now()}`\n    }\n  }\n}];"
+      },
+      "id": "parse-request",
+      "name": "Parse Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.targetWorkflow }}",
+                    "operation": "equals",
+                    "value2": "iana-router"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.targetWorkflow }}",
+                    "operation": "contains",
+                    "value2": "iana-"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "route-workflow",
+      "name": "Route Workflow",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:5678/webhook/iana",
+        "requestMethod": "POST",
+        "sendBody": true,
+        "bodyParametersJson": "={{ JSON.stringify({query: $json.targetData.query || $json.targetData, user_id: $json.user_id, channel: $json.channel, conversation_id: $json.targetData.conversation_id}) }}",
+        "options": {}
+      },
+      "id": "call-router",
+      "name": "Call IANA Router",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:5678/webhook/{{ $json.targetWorkflow.replace('iana-', '') }}",
+        "requestMethod": "POST",
+        "sendBody": true,
+        "bodyParametersJson": "={{ JSON.stringify({...$json.targetData, user_id: $json.user_id, channel: $json.channel}) }}",
+        "options": {}
+      },
+      "id": "call-workflow",
+      "name": "Call Target Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll"
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1120, 250]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format bridge response\nconst input = $input.first().json;\nconst parseData = $('Parse Request').first().json;\nconst startTime = parseData._meta?.startTime || Date.now();\n\n// Extract response from HTTP call\nlet response = input;\nif (typeof input === 'string') {\n  try {\n    response = JSON.parse(input);\n  } catch (e) {\n    response = { response: input };\n  }\n}\n\nreturn [{\n  json: {\n    success: response.success !== false,\n    data: response.data || response,\n    workflow: parseData.targetWorkflow,\n    meta: {\n      latency_ms: Date.now() - startTime,\n      timestamp: new Date().toISOString(),\n      request_id: parseData._meta?.requestId\n    }\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 250]
+    },
+    {
+      "parameters": {},
+      "id": "respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 250]
+    }
+  ],
+  "connections": {
+    "Webhook Bridge": {
+      "main": [
+        [
+          {
+            "node": "Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Request": {
+      "main": [
+        [
+          {
+            "node": "Route Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Workflow": {
+      "main": [
+        [
+          {
+            "node": "Call IANA Router",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call Target Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call IANA Router": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Target Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "Bridge"
+    }
+  ],
+  "active": false
+}

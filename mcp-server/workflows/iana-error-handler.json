@@ -1,0 +1,196 @@
+{
+  "name": "IANA Error Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "iana/error",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-error-001",
+      "name": "Webhook Error",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse error payload\nconst body = $input.item.json.body || $input.item.json;\nconst error = body.error || {};\n\nreturn {\n  json: {\n    workflow_id: body.workflow_id || 'unknown',\n    node_id: body.node_id || 'unknown',\n    error_message: error.message || error.toString() || 'Unknown error',\n    error_code: error.code || 'UNKNOWN',\n    error_stack: error.stack || null,\n    context: body.context || {},\n    severity: body.severity || 'error',\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "parse-error-002",
+      "name": "Parse Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO iana.error_logs (workflow_id, node_id, error_message, error_code, error_stack, context, severity, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING error_id",
+        "options": {}
+      },
+      "id": "db-log-error-003",
+      "name": "Log Error to DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [680, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-iana",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.severity }}",
+              "operation": "equals",
+              "value2": "critical"
+            }
+          ]
+        }
+      },
+      "id": "check-severity-004",
+      "name": "Check Severity",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Slack alert for critical errors\nconst error = $('Parse Error').item.json;\n\nreturn {\n  json: {\n    channel: '#alerts-critical',\n    username: 'IANA Error Bot',\n    icon_emoji: ':fire:',\n    text: `🚨 *CRITICAL ERROR in ${error.workflow_id}*`,\n    attachments: [\n      {\n        color: 'danger',\n        fields: [\n          {\n            title: 'Error Message',\n            value: error.error_message,\n            short: false\n          },\n          {\n            title: 'Node ID',\n            value: error.node_id,\n            short: true\n          },\n          {\n            title: 'Error Code',\n            value: error.error_code,\n            short: true\n          },\n          {\n            title: 'Timestamp',\n            value: error.timestamp,\n            short: false\n          }\n        ]\n      }\n    ]\n  }\n};"
+      },
+      "id": "format-slack-005",
+      "name": "Format Slack Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simulate Slack send (will be replaced by real Slack node)\nconst message = $input.item.json;\n\nreturn {\n  json: {\n    slack_sent: true,\n    channel: message.channel,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "send-slack-006",
+      "name": "Send Slack Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge results and format response\nconst errorLog = $('Log Error to DB').item.json;\nconst slackSent = $input.item.json?.slack_sent || false;\n\nreturn {\n  json: {\n    success: true,\n    error_id: errorLog.error_id || errorLog[0]?.error_id,\n    logged: true,\n    alert_sent: slackSent,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "merge-response-007",
+      "name": "Merge Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-008",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Error": {
+      "main": [
+        [
+          {
+            "node": "Parse Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Error": {
+      "main": [
+        [
+          {
+            "node": "Log Error to DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error to DB": {
+      "main": [
+        [
+          {
+            "node": "Check Severity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Severity": {
+      "main": [
+        [
+          {
+            "node": "Format Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Slack Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Alert": {
+      "main": [
+        [
+          {
+            "node": "Merge Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "id": "iana-error-handler"
+}

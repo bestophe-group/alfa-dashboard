@@ -1,0 +1,366 @@
+{
+  "name": "iana-rag",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rag",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-rag",
+      "name": "Webhook RAG",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "iana-rag-crud"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validation commune AVANT Switch\nconst body = $input.first().json.body || $input.first().json;\nconst { action, data, user_id, channel } = body;\n\n// Validation action\nif (!action) {\n  throw new Error('VALIDATION_ERROR: action is required');\n}\n\n// Validation user_id\nif (!user_id) {\n  throw new Error('VALIDATION_ERROR: user_id is required');\n}\n\n// Validation actions valides\nconst validActions = ['query', 'create', 'update', 'delete', 'enrich'];\nif (!validActions.includes(action)) {\n  throw new Error(`VALIDATION_ERROR: action must be one of: ${validActions.join(', ')}`);\n}\n\n// Ajouter metadata\nreturn [{\n  json: {\n    action: action,\n    data: data || {},\n    user_id: user_id,\n    channel: channel || 'api',\n    _meta: {\n      startTime: Date.now(),\n      requestId: `${user_id}-${Date.now()}`\n    }\n  }\n}];"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "query"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "create"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "update"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "delete"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "enrich"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "switch-action",
+      "name": "Switch Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [690, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "iana-rag-query",
+        "options": {}
+      },
+      "id": "action-query",
+      "name": "Execute RAG Query",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [910, 100]
+    },
+    {
+      "parameters": {
+        "workflowId": "iana-rag-create",
+        "options": {}
+      },
+      "id": "action-create",
+      "name": "Execute RAG Create",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [910, 200]
+    },
+    {
+      "parameters": {
+        "workflowId": "iana-rag-update",
+        "options": {}
+      },
+      "id": "action-update",
+      "name": "Execute RAG Update",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "iana-rag-delete",
+        "options": {}
+      },
+      "id": "action-delete",
+      "name": "Execute RAG Delete",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [910, 400]
+    },
+    {
+      "parameters": {
+        "workflowId": "iana-rag-enrich",
+        "options": {}
+      },
+      "id": "action-enrich",
+      "name": "Execute RAG Enrich",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [910, 500]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll"
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT iana.log_operation($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) as log_id",
+        "additionalFields": {
+          "queryParameters": "={{ ['iana-rag', $json.action, $json.user_id, $json.channel || 'api', JSON.stringify($json.data || {}), JSON.stringify($json), $json.success !== false, $json.errorCode || null, $json.errorMessage || null, Date.now() - ($json._meta?.startTime || Date.now()), $json._meta?.requestId || null] }}"
+        },
+        "options": {}
+      },
+      "id": "log-operation",
+      "name": "Log Operation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1350, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-iana",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Response Standardisée\nconst input = $input.first().json;\nconst validation = $('Validate Input').first().json;\nconst startTime = validation._meta?.startTime || Date.now();\n\n// Success case\nif (input.success !== false && !input.isError) {\n  return [{\n    json: {\n      success: true,\n      action: validation.action,\n      data: input.data || input,\n      error: null,\n      meta: {\n        latency_ms: Date.now() - startTime,\n        timestamp: new Date().toISOString(),\n        request_id: validation._meta?.requestId\n      }\n    }\n  }];\n}\n\n// Error case\nreturn [{\n  json: {\n    success: false,\n    action: validation.action,\n    data: null,\n    error: {\n      code: input.errorCode || 'UNKNOWN_ERROR',\n      message: input.errorMessage || input.message || 'An error occurred'\n    },\n    meta: {\n      latency_ms: Date.now() - startTime,\n      timestamp: new Date().toISOString(),\n      request_id: validation._meta?.requestId\n    }\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1570, 300]
+    },
+    {
+      "parameters": {},
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1790, 300]
+    }
+  ],
+  "connections": {
+    "Webhook RAG": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Switch Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Action": {
+      "main": [
+        [
+          {
+            "node": "Execute RAG Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute RAG Create",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute RAG Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute RAG Delete",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute RAG Enrich",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute RAG Query": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute RAG Create": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute RAG Update": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute RAG Delete": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute RAG Enrich": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Log Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Operation": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "CRUD"
+    }
+  ],
+  "active": false
+}

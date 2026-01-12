@@ -1,0 +1,309 @@
+{
+  "name": "iana-microsoft-collect",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "microsoft/collect",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-collect",
+      "name": "Webhook Collect",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validation commune\nconst body = $input.first().json.body || $input.first().json;\nconst { action, data, user_id } = body;\n\nif (!action) {\n  throw new Error('VALIDATION_ERROR: action is required');\n}\n\nif (!user_id) {\n  throw new Error('VALIDATION_ERROR: user_id is required');\n}\n\nconst validActions = ['email', 'teams', 'users', 'calendar', 'files', 'all'];\nif (!validActions.includes(action)) {\n  throw new Error(`VALIDATION_ERROR: action must be one of: ${validActions.join(', ')}`);\n}\n\nreturn [{\n  json: {\n    action: action,\n    data: data || {},\n    user_id: user_id,\n    channel: 'api',\n    _meta: {\n      startTime: Date.now(),\n      requestId: `${user_id}-${Date.now()}`\n    }\n  }\n}];"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Préparer requête Graph API selon action\nconst input = $input.first().json;\nconst { action, data, user_id } = input;\n\nlet endpoint = '';\nlet queryParams = '';\n\nswitch (action) {\n  case 'email':\n    endpoint = '/me/messages';\n    queryParams = '?$top=50&$orderby=receivedDateTime desc&$select=id,subject,from,receivedDateTime,bodyPreview,body,isRead';\n    if (data.filter === 'unread') {\n      queryParams += '&$filter=isRead eq false';\n    }\n    break;\n  case 'teams':\n    endpoint = '/me/joinedTeams';\n    queryParams = '?$select=id,displayName';\n    break;\n  case 'users':\n    endpoint = '/users';\n    queryParams = '?$top=100&$select=id,displayName,mail,department,jobTitle';\n    break;\n  case 'calendar':\n    endpoint = '/me/calendar/events';\n    queryParams = '?$top=50&$orderby=start/dateTime desc&$select=id,subject,start,end,bodyPreview,organizer';\n    break;\n  case 'files':\n    endpoint = '/me/drive/root/children';\n    queryParams = '?$top=100&$select=id,name,webUrl,lastModifiedDateTime,size';\n    break;\n  case 'all':\n    endpoint = '/me';\n    queryParams = '';\n    break;\n}\n\nreturn [{\n  json: {\n    endpoint: endpoint,\n    queryParams: queryParams,\n    action: action,\n    user_id: user_id,\n    data: data\n  }\n}];"
+      },
+      "id": "prepare-request",
+      "name": "Prepare Graph API Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={ 'https://graph.microsoft.com/v1.0' + $json.endpoint + ($json.queryParams || '') }",
+        "method": "GET",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftEntraOAuth2Api",
+        "options": {}
+      },
+      "id": "graph-api",
+      "name": "Microsoft Graph API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        910,
+        300
+      ],
+      "credentials": {
+        "microsoftEntraOAuth2Api": {
+          "id": "microsoft-365-alfa",
+          "name": "Microsoft 365 ALFA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Formater données pour RAG\nconst input = $input.first().json;\nconst validation = $('Validate Input').first().json;\nconst action = validation.action;\n\nlet formattedData = [];\n\n// Extraire items depuis response Graph API\nconst items = input.value || (input.id ? [input] : []);\n\nif (action === 'email' && items.length > 0) {\n  formattedData = items.map(msg => ({\n    title: `Email: ${msg.subject || 'No Subject'}`,\n    content: msg.body?.content || msg.bodyPreview || '',\n    category: 'email',\n    metadata: {\n      source: 'microsoft_365',\n      type: 'email',\n      messageId: msg.id,\n      from: msg.from?.emailAddress?.address || '',\n      receivedDateTime: msg.receivedDateTime,\n      isRead: msg.isRead\n    }\n  }));\n} else if (action === 'teams' && items.length > 0) {\n  formattedData = items.map(team => ({\n    title: `Team: ${team.displayName}`,\n    content: `Team ID: ${team.id}`,\n    category: 'teams',\n    metadata: {\n      source: 'microsoft_365',\n      type: 'team',\n      teamId: team.id,\n      displayName: team.displayName\n    }\n  }));\n} else if (action === 'users' && items.length > 0) {\n  formattedData = items.map(user => ({\n    title: `User: ${user.displayName}`,\n    content: `${user.jobTitle || ''} - ${user.department || ''}`.trim(),\n    category: 'user',\n    metadata: {\n      source: 'microsoft_365',\n      type: 'user',\n      userId: user.id,\n      email: user.mail || '',\n      department: user.department || ''\n    }\n  }));\n} else if (action === 'calendar' && items.length > 0) {\n  formattedData = items.map(event => ({\n    title: `Event: ${event.subject || 'No Subject'}`,\n    content: event.bodyPreview || '',\n    category: 'calendar',\n    metadata: {\n      source: 'microsoft_365',\n      type: 'calendar_event',\n      eventId: event.id,\n      start: event.start?.dateTime || '',\n      end: event.end?.dateTime || '',\n      organizer: event.organizer?.emailAddress?.address || ''\n    }\n  }));\n} else if (action === 'files' && items.length > 0) {\n  formattedData = items.map(file => ({\n    title: `File: ${file.name}`,\n    content: file.name,\n    category: 'file',\n    metadata: {\n      source: 'microsoft_365',\n      type: 'file',\n      fileId: file.id,\n      webUrl: file.webUrl || '',\n      lastModifiedDateTime: file.lastModifiedDateTime\n    }\n  }));\n} else if (action === 'all') {\n  formattedData = [{\n    title: 'Microsoft Profile',\n    content: JSON.stringify(input, null, 2),\n    category: 'profile',\n    metadata: {\n      source: 'microsoft_365',\n      type: 'profile',\n      userId: input.id\n    }\n  }];\n}\n\nreturn formattedData.map(item => ({ json: item }));"
+      },
+      "id": "format-data",
+      "name": "Format Data for RAG",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "split-items",
+      "name": "Split Items",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/webhook/rag/auto-save",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParametersJson": "={{ JSON.stringify({ action: 'save', data: $json, user_id: $('Validate Input').first().json.user_id }) }}",
+        "options": {}
+      },
+      "id": "save-rag",
+      "name": "Save to RAG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1570,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        1790,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT iana.log_operation($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) as log_id",
+        "additionalFields": {
+          "queryParameters": "={{ ['iana-microsoft-collect', $('Validate Input').first().json.action, $('Validate Input').first().json.user_id, 'api', JSON.stringify($('Validate Input').first().json.data || {}), JSON.stringify({count: $input.all().length}), true, null, null, Date.now() - ($('Validate Input').first().json._meta?.startTime || Date.now()), $('Validate Input').first().json._meta?.requestId || null] }}"
+        },
+        "options": {}
+      },
+      "id": "log-operation",
+      "name": "Log Operation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        2010,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Response Standardisée\nconst input = $input.all();\nconst validation = $('Validate Input').first().json;\nconst startTime = validation._meta?.startTime || Date.now();\n\nreturn [{\n  json: {\n    success: true,\n    action: validation.action,\n    data: {\n      items_collected: input.length,\n      items: input.map(item => item.json?.data || item.json)\n    },\n    error: null,\n    meta: {\n      latency_ms: Date.now() - startTime,\n      timestamp: new Date().toISOString(),\n      request_id: validation._meta?.requestId\n    }\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2230,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2450,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Collect": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Prepare Graph API Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Graph API Request": {
+      "main": [
+        [
+          {
+            "node": "Microsoft Graph API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft Graph API": {
+      "main": [
+        [
+          {
+            "node": "Format Data for RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Data for RAG": {
+      "main": [
+        [
+          {
+            "node": "Split Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Items": {
+      "main": [
+        [
+          {
+            "node": "Save to RAG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to RAG": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Log Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Operation": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "Microsoft"
+    },
+    {
+      "name": "Data Collection"
+    },
+    {
+      "name": "P1"
+    }
+  ],
+  "active": false
+}

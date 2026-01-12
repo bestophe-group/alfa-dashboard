@@ -192,10 +192,12 @@ services:
       - EXECUTIONS_DATA_MAX_AGE=168
       - N8N_METRICS=true
       - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_JWT_SECRET:-changeme-jwt-secret}
-      - N8N_RUNNERS_MODE=external
-      - N8N_RUNNERS_PYTHON_IMAGE=n8nio/n8n-python-runner:latest
+      - N8N_CODE_ALLOWED_MODULES=child_process
+    ports:
+      - "5678:5678"
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./scripts:/home/node/scripts:ro
     networks:
       - alfa-network
     depends_on:

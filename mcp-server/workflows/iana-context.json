@@ -1,0 +1,118 @@
+{
+  "name": "IANA Context",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "iana/context",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-context-001",
+      "name": "Webhook Get Context",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse context request\nconst body = $input.item.json.body || $input.item.json;\n\nreturn {\n  json: {\n    conversation_id: body.conversation_id || null,\n    user_id: body.user_id || null,\n    limit: body.limit || 10,\n    channel: body.channel || null\n  }\n};"
+      },
+      "id": "parse-request-002",
+      "name": "Parse Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT m.message_id, m.conversation_id, m.role, m.content, m.tier, m.metadata, m.created_at FROM iana.messages m JOIN iana.conversations c ON m.conversation_id = c.conversation_id WHERE (m.conversation_id = $1 OR $1 IS NULL) AND (c.user_id = $2 OR $2 IS NULL) AND (c.channel = $3 OR $3 IS NULL) ORDER BY m.created_at DESC LIMIT $4",
+        "options": {}
+      },
+      "id": "db-query-003",
+      "name": "Query Message History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [680, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-iana",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format context response\nconst messages = $input.all();\n\nreturn {\n  json: {\n    success: true,\n    count: messages.length,\n    messages: messages.map(m => m.json).reverse(), // Chronological order\n    retrieved_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "format-context-004",
+      "name": "Format Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-005",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Get Context": {
+      "main": [
+        [
+          {
+            "node": "Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Request": {
+      "main": [
+        [
+          {
+            "node": "Query Message History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Message History": {
+      "main": [
+        [
+          {
+            "node": "Format Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Context": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "id": "iana-context"
+}

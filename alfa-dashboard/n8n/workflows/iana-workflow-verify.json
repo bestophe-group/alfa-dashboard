@@ -1,0 +1,417 @@
+{
+  "name": "iana-workflow-verify",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "workflow-verify",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-verify",
+      "name": "Webhook Verify",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "iana-workflow-verify-crud"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validation commune AVANT Switch\nconst body = $input.first().json.body || $input.first().json;\nconst { action, data, user_id, channel } = body;\n\n// Validation action\nif (!action) {\n  throw new Error('VALIDATION_ERROR: action is required');\n}\n\n// Validation user_id\nif (!user_id) {\n  throw new Error('VALIDATION_ERROR: user_id is required');\n}\n\n// Validation actions valides\nconst validActions = ['list', 'check', 'report'];\nif (!validActions.includes(action)) {\n  throw new Error(`VALIDATION_ERROR: action must be one of: ${validActions.join(', ')}`);\n}\n\n// Ajouter metadata\nreturn [{\n  json: {\n    action: action,\n    data: data || {},\n    user_id: user_id,\n    channel: channel || 'api',\n    _meta: {\n      startTime: Date.now(),\n      requestId: `${user_id}-${Date.now()}`\n    }\n  }\n}];"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "list"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "check"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "report"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "switch-action",
+      "name": "Switch Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: list - Lister workflows via API n8n\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\n// Appel API n8n pour lister workflows\nconst filters = data.filters || {};\nconst apiUrl = `${N8N_API_BASE}/workflows`;\n\nreturn [{\n  json: {\n    success: true,\n    action: 'list',\n    api_url: apiUrl,\n    filters: filters,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-list",
+      "name": "Prepare List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/api/v1/workflows",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "={{ $env.N8N_API_KEY || '' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-list-workflows",
+      "name": "List Workflows HTTP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: check - Vérifier doublons et problèmes\nconst input = $input.first().json;\n\n// Récupérer workflows depuis l'API\n// Note: Cette action devrait être appelée après action 'list'\n// Pour l'instant, préparer les vérifications\n\nconst checks = {\n  duplicates: [],\n  missing_webhook_id: [],\n  isolated_nodes: [],\n  structure_errors: []\n};\n\nreturn [{\n  json: {\n    success: true,\n    action: 'check',\n    checks: checks,\n    workflows_count: 0\n  }\n}];"
+      },
+      "id": "action-check",
+      "name": "Prepare Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Vérifier workflows pour doublons et problèmes\nconst input = $input.first().json;\n\n// Récupérer workflows depuis API (via action 'list')\nconst workflows = input.data || [];\n\nconst issues = {\n  duplicates: [],\n  missing_webhook_id: [],\n  isolated_nodes: [],\n  structure_errors: []\n};\n\n// 1. Vérifier doublons (noms identiques)\nconst nameMap = {};\nfor (const wf of workflows) {\n  const name = wf.name;\n  if (!nameMap[name]) {\n    nameMap[name] = [];\n  }\n  nameMap[name].push(wf.id);\n}\n\nfor (const [name, ids] of Object.entries(nameMap)) {\n  if (ids.length > 1) {\n    issues.duplicates.push({\n      name: name,\n      ids: ids,\n      count: ids.length\n    });\n  }\n}\n\n// 2. Vérifier workflows webhook sans webhookId\nfor (const wf of workflows) {\n  if (wf.nodes) {\n    for (const node of wf.nodes) {\n      if (node.type === 'n8n-nodes-base.webhook') {\n        const webhookId = node.parameters?.webhookId || node.webhookId;\n        if (!webhookId) {\n          issues.missing_webhook_id.push({\n            workflow_name: wf.name,\n            workflow_id: wf.id,\n            node_id: node.id\n          });\n        }\n      }\n    }\n  }\n}\n\n// 3. Vérifier workflows avec nodes isolés (pas de connections)\nfor (const wf of workflows) {\n  if (wf.nodes && (!wf.connections || Object.keys(wf.connections).length === 0)) {\n    if (wf.nodes.length > 1) {\n      issues.isolated_nodes.push({\n        workflow_name: wf.name,\n        workflow_id: wf.id,\n        nodes_count: wf.nodes.length\n      });\n    }\n  }\n}\n\n// 4. Vérifier erreurs de structure (nodes sans type, connections invalides)\nfor (const wf of workflows) {\n  if (wf.nodes) {\n    for (const node of wf.nodes) {\n      if (!node.type) {\n        issues.structure_errors.push({\n          workflow_name: wf.name,\n          workflow_id: wf.id,\n          node_id: node.id,\n          error: 'Node without type'\n        });\n      }\n    }\n  }\n}\n\nconst total_issues = issues.duplicates.length + \n                     issues.missing_webhook_id.length + \n                     issues.isolated_nodes.length + \n                     issues.structure_errors.length;\n\nreturn [{\n  json: {\n    success: true,\n    action: 'check',\n    workflows_count: workflows.length,\n    issues: issues,\n    total_issues: total_issues,\n    has_issues: total_issues > 0\n  }\n}];"
+      },
+      "id": "check-workflows",
+      "name": "Check Workflows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: report - Générer rapport de vérification\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\n// Récupérer résultats de vérification depuis la base de données\n// Note: Cette action devrait interroger iana.operation_logs pour générer un rapport\n\nreturn [{\n  json: {\n    success: true,\n    action: 'report',\n    message: 'Report generation - query iana.operation_logs for verification results',\n    filters: {\n      workflow_id: 'iana-workflow-verify',\n      user_id: user_id,\n      date_from: data.date_from || null,\n      date_to: data.date_to || null\n    },\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-report",
+      "name": "Prepare Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  workflow_id,\n  action,\n  COUNT(*) as total_checks,\n  COUNT(*) FILTER (WHERE success = true) as passed,\n  COUNT(*) FILTER (WHERE success = false) as failed,\n  AVG(latency_ms) as avg_latency_ms,\n  MIN(created_at) as first_check,\n  MAX(created_at) as last_check\nFROM iana.operation_logs\nWHERE workflow_id = 'iana-workflow-verify'\n  AND user_id = $1\n  AND ($2::timestamp IS NULL OR created_at >= $2)\n  AND ($3::timestamp IS NULL OR created_at <= $3)\nGROUP BY workflow_id, action\nORDER BY workflow_id, action",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.user_id, $json.filters.date_from || null, $json.filters.date_to || null] }}"
+        },
+        "options": {}
+      },
+      "id": "db-get-report",
+      "name": "Get Report",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1130,
+        400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll"
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        1350,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT iana.log_operation($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) as log_id",
+        "additionalFields": {
+          "queryParameters": "={{ ['iana-workflow-verify', $('Validate Input').first().json.action, $('Validate Input').first().json.user_id, 'api', JSON.stringify($('Validate Input').first().json.data || {}), JSON.stringify($json), $json.success !== false, $json.errorCode || null, $json.errorMessage || null, Date.now() - ($('Validate Input').first().json._meta?.startTime || Date.now()), $('Validate Input').first().json._meta?.requestId || null] }}"
+        },
+        "options": {}
+      },
+      "id": "log-operation",
+      "name": "Log Operation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1570,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Response Standardisée\nconst input = $input.first().json;\nconst validation = $('Validate Input').first().json;\nconst startTime = validation._meta?.startTime || Date.now();\n\n// Success case\nif (input.success !== false && !input.isError) {\n  return [{\n    json: {\n      success: true,\n      action: validation.action,\n      data: input,\n      error: null,\n      meta: {\n        latency_ms: Date.now() - startTime,\n        timestamp: new Date().toISOString(),\n        request_id: validation._meta?.requestId\n      }\n    }\n  }];\n}\n\n// Error case\nreturn [{\n  json: {\n    success: false,\n    action: validation.action,\n    data: null,\n    error: {\n      code: input.errorCode || 'UNKNOWN_ERROR',\n      message: input.errorMessage || input.message || 'An error occurred'\n    },\n    meta: {\n      latency_ms: Date.now() - startTime,\n      timestamp: new Date().toISOString(),\n      request_id: validation._meta?.requestId\n    }\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1790,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2010,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Verify": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Switch Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Action": {
+      "main": [
+        [
+          {
+            "node": "Prepare List",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Check",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare List": {
+      "main": [
+        [
+          {
+            "node": "List Workflows HTTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Workflows HTTP": {
+      "main": [
+        [
+          {
+            "node": "Check Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Check": {
+      "main": [
+        [
+          {
+            "node": "Check Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Workflows": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Report": {
+      "main": [
+        [
+          {
+            "node": "Get Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Report": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Log Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Operation": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "Verification"
+    },
+    {
+      "name": "P0"
+    }
+  ],
+  "active": false
+}

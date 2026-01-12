@@ -1,0 +1,372 @@
+{
+  "name": "iana-workflow-factory",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "workflow-factory",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-factory",
+      "name": "Webhook Factory",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "workflow-factory-crud"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validation selon méthode PDF\nconst body = $input.first().json.body || $input.first().json;\nconst { workflow_spec, user_id, channel } = body;\n\n// Validation user_id\nif (!user_id) {\n  throw new Error('VALIDATION_ERROR: user_id is required');\n}\n\n// Validation workflow_spec (conception sur papier)\nif (!workflow_spec) {\n  throw new Error('VALIDATION_ERROR: workflow_spec is required (conception sur papier)');\n}\n\n// Validation champs obligatoires selon méthode\nconst requiredFields = ['name', 'description', 'trigger', 'nodes_sequence'];\nfor (const field of requiredFields) {\n  if (!workflow_spec[field]) {\n    throw new Error(`VALIDATION_ERROR: workflow_spec.${field} is required`);\n  }\n}\n\n// Validation trigger\nconst validTriggers = ['webhook', 'cron', 'schedule', 'manual'];\nif (!validTriggers.includes(workflow_spec.trigger.type)) {\n  throw new Error(`VALIDATION_ERROR: trigger.type must be one of: ${validTriggers.join(', ')}`);\n}\n\n// Validation nodes_sequence (minimum 1 node)\nif (!Array.isArray(workflow_spec.nodes_sequence) || workflow_spec.nodes_sequence.length === 0) {\n  throw new Error('VALIDATION_ERROR: nodes_sequence must be a non-empty array');\n}\n\n// Ajouter metadata\nreturn [{\n  json: {\n    workflow_spec: workflow_spec,\n    user_id: user_id,\n    channel: channel || 'api',\n    _meta: {\n      startTime: Date.now(),\n      requestId: `${user_id}-${Date.now()}`,\n      method: 'cursor-n8n-100-percent'\n    }\n  }\n}];"
+      },
+      "id": "validate-spec",
+      "name": "Validate Workflow Spec",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Phase 1: Génération workflow selon méthode PDF\n// Convertir workflow_spec en format n8n\nconst spec = $input.first().json.workflow_spec;\nconst user_id = $input.first().json.user_id;\n\n// 1. Créer le trigger\nconst triggerNode = {\n  parameters: {},\n  id: `trigger-${Date.now()}`,\n  name: `TRIGGER_${spec.trigger.type.toUpperCase()}`,\n  type: '',\n  typeVersion: 1,\n  position: [250, 300]\n};\n\n// Définir le type de trigger\nif (spec.trigger.type === 'webhook') {\n  triggerNode.type = 'n8n-nodes-base.webhook';\n  triggerNode.typeVersion = 2;\n  triggerNode.parameters = {\n    httpMethod: spec.trigger.method || 'POST',\n    path: spec.trigger.path || spec.name.toLowerCase().replace(/[^a-z0-9]/g, '-'),\n    responseMode: 'responseNode'\n  };\n} else if (spec.trigger.type === 'cron' || spec.trigger.type === 'schedule') {\n  triggerNode.type = 'n8n-nodes-base.scheduleTrigger';\n  triggerNode.typeVersion = 1.2;\n  triggerNode.parameters = {\n    rule: {\n      interval: [{\n        field: 'cronExpression',\n        expression: spec.trigger.cron || '0 */1 * * *'\n      }]\n    }\n  };\n} else {\n  triggerNode.type = 'n8n-nodes-base.manualTrigger';\n  triggerNode.typeVersion = 1;\n}\n\n// 2. Convertir nodes_sequence en nodes n8n\nconst nodes = [triggerNode];\nconst connections = {};\nlet currentPosition = [470, 300];\nlet previousNodeName = triggerNode.name;\n\nfor (let i = 0; i < spec.nodes_sequence.length; i++) {\n  const nodeSpec = spec.nodes_sequence[i];\n  const nodeType = nodeSpec.type || 'code';\n  \n  // Déterminer le type de node n8n\n  let n8nNodeType = 'n8n-nodes-base.code';\n  let n8nTypeVersion = 2;\n  let nodeParameters = {};\n  \n  if (nodeType.startsWith('FETCH_') || nodeType.startsWith('HTTP_')) {\n    n8nNodeType = 'n8n-nodes-base.httpRequest';\n    n8nTypeVersion = 4.2;\n    nodeParameters = {\n      url: nodeSpec.url || '',\n      requestMethod: nodeSpec.method || 'GET',\n      authentication: nodeSpec.auth || 'none',\n      sendHeaders: true,\n      headerParameters: {\n        parameters: nodeSpec.headers || []\n      },\n      timeout: nodeSpec.timeout || 30000\n    };\n  } else if (nodeType.startsWith('PARSE_') || nodeType.startsWith('TRANSFORM_')) {\n    n8nNodeType = 'n8n-nodes-base.code';\n    n8nTypeVersion = 2;\n    nodeParameters = {\n      jsCode: nodeSpec.code || `// ${nodeType}\\nconst input = $input.first().json;\\nreturn input;`\n    };\n  } else if (nodeType.startsWith('CONDITION_') || nodeType.startsWith('IF_')) {\n    n8nNodeType = 'n8n-nodes-base.if';\n    n8nTypeVersion = 2;\n    nodeParameters = {\n      conditions: nodeSpec.conditions || {}\n    };\n  } else if (nodeType.startsWith('SEND_')) {\n    // Détecter le service (Slack, Email, etc.)\n    if (nodeSpec.service === 'slack' || nodeType.includes('Slack')) {\n      n8nNodeType = 'n8n-nodes-base.slack';\n      n8nTypeVersion = 2;\n      nodeParameters = {\n        channel: nodeSpec.channel || '#general',\n        text: nodeSpec.text || '{{$json}}'\n      };\n    } else {\n      n8nNodeType = 'n8n-nodes-base.code';\n      n8nTypeVersion = 2;\n      nodeParameters = {\n        jsCode: `// ${nodeType}\\nreturn $input.first().json;`\n      };\n    }\n  } else if (nodeType.startsWith('LOG_')) {\n    n8nNodeType = 'n8n-nodes-base.code';\n    n8nTypeVersion = 2;\n    nodeParameters = {\n      jsCode: `// ${nodeType}\\nconst data = $input.first().json;\\nconsole.log('LOG:', JSON.stringify(data));\\nreturn data;`\n    };\n  } else {\n    // Node code par défaut\n    n8nNodeType = 'n8n-nodes-base.code';\n    n8nTypeVersion = 2;\n    nodeParameters = {\n      jsCode: nodeSpec.code || `// ${nodeType}\\nreturn $input.first().json;`\n    };\n  }\n  \n  const node = {\n    parameters: nodeParameters,\n    id: `node-${Date.now()}-${i}`,\n    name: nodeSpec.name || nodeType,\n    type: n8nNodeType,\n    typeVersion: n8nTypeVersion,\n    position: [currentPosition[0], currentPosition[1]]\n  };\n  \n  nodes.push(node);\n  \n  // Créer la connexion\n  if (!connections[previousNodeName]) {\n    connections[previousNodeName] = { main: [] };\n  }\n  connections[previousNodeName].main.push([{ node: node.name, type: 'main', index: 0 }]);\n  \n  previousNodeName = node.name;\n  currentPosition[0] += 220;\n}\n\n// 3. Ajouter node Respond to Webhook si trigger est webhook\nif (spec.trigger.type === 'webhook') {\n  const respondNode = {\n    parameters: {},\n    id: `respond-${Date.now()}`,\n    name: 'Respond to Webhook',\n    type: 'n8n-nodes-base.respondToWebhook',\n    typeVersion: 1,\n    position: [currentPosition[0], currentPosition[1]]\n  };\n  \n  nodes.push(respondNode);\n  \n  if (!connections[previousNodeName]) {\n    connections[previousNodeName] = { main: [] };\n  }\n  connections[previousNodeName].main.push([{ node: respondNode.name, type: 'main', index: 0 }]);\n}\n\n// 4. Créer l'objet workflow complet\nconst workflowData = {\n  name: spec.name,\n  description: spec.description || '',\n  nodes: nodes,\n  connections: connections,\n  settings: {\n    executionOrder: 'v1',\n    callerPolicy: 'workflowsFromSameOwner',\n    availableInMCP: false\n  },\n  staticData: null,\n  tags: spec.tags || []\n};\n\nreturn [{\n  json: {\n    workflowData: workflowData,\n    user_id: user_id,\n    _meta: $input.first().json._meta\n  }\n}];"
+      },
+      "id": "generate-workflow",
+      "name": "Generate Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/api/v1/workflows",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2RhNGJjNy1lY2ViLTQ1N2YtYTg3ZS1jYzkzODdlYjQ3MWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY4MjI5MTEwfQ.E1amsEqAQESuuvc0l2qABKXtIEwbxelnoubM1vh9xnM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersJson": "={{ JSON.stringify($json.workflowData) }}",
+        "timeout": 60000
+      },
+      "id": "api-create-workflow",
+      "name": "API Create Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        910,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Phase 2: Testing selon méthode PDF\nconst createResponse = $input.first().json;\nconst workflowSpec = $('Validate Workflow Spec').first().json.workflow_spec;\n\n// Vérifier si la création a réussi\nif (!createResponse.id) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'CREATE_FAILED',\n      errorMessage: createResponse.message || 'Failed to create workflow',\n      workflow_id: null,\n      test_results: null\n    }\n  }];\n}\n\nconst workflowId = createResponse.id;\n\n// Phase 2a: Test unitaire (si test_data fourni)\nlet testResults = {\n  unit_tests: [],\n  full_test: null,\n  real_data_test: null\n};\n\nif (workflowSpec.test_data && workflowSpec.test_data.unit) {\n  // Simuler test unitaire (en production, utiliser Execute Step API)\n  testResults.unit_tests = workflowSpec.test_data.unit.map((test, idx) => {\n    return {\n      node: test.node,\n      status: 'pending',\n      note: 'Execute Step required manually in n8n UI'\n    };\n  });\n}\n\n// Phase 2b: Test full workflow (si test_data.full fourni)\nif (workflowSpec.test_data && workflowSpec.test_data.full) {\n  testResults.full_test = {\n    status: 'pending',\n    note: 'Full workflow test required manually in n8n UI (Execute Workflow)',\n    test_data: workflowSpec.test_data.full\n  };\n}\n\n// Phase 2c: Test avec données réelles (si test_data.real fourni)\nif (workflowSpec.test_data && workflowSpec.test_data.real) {\n  testResults.real_data_test = {\n    status: 'pending',\n    note: 'Real data test required manually in n8n UI',\n    test_data: workflowSpec.test_data.real\n  };\n}\n\nreturn [{\n  json: {\n    success: true,\n    workflow_id: workflowId,\n    workflow_name: createResponse.name,\n    test_results: testResults,\n    _meta: $('Validate Workflow Spec').first().json._meta\n  }\n}];"
+      },
+      "id": "prepare-testing",
+      "name": "Prepare Testing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.auto_activate !== false }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "should-activate",
+      "name": "Should Activate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:5678/api/v1/workflows/{{ $json.workflow_id }}/activate",
+        "method": "POST",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2RhNGJjNy1lY2ViLTQ1N2YtYTg3ZS1jYzkzODdlYjQ3MWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY4MjI5MTEwfQ.E1amsEqAQESuuvc0l2qABKXtIEwbxelnoubM1vh9xnM"
+            }
+          ]
+        },
+        "timeout": 60000
+      },
+      "id": "api-activate-workflow",
+      "name": "API Activate Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1570,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Phase 3: Monitoring et documentation\nconst input = $input.first().json;\nconst workflowSpec = $('Validate Workflow Spec').first().json.workflow_spec;\nconst user_id = $('Validate Workflow Spec').first().json.user_id;\n\n// Créer rapport de création\nconst report = {\n  workflow_id: input.workflow_id || input.id,\n  workflow_name: input.workflow_name || input.name,\n  created_at: new Date().toISOString(),\n  created_by: user_id,\n  method: 'cursor-n8n-100-percent',\n  status: input.success ? 'created' : 'failed',\n  test_results: input.test_results || null,\n  activation_status: input.active !== undefined ? (input.active ? 'activated' : 'pending') : 'unknown',\n  monitoring: {\n    enabled: true,\n    retention_days: 30,\n    alert_on_error: true,\n    first_24h_critical: true\n  },\n  documentation: {\n    description: workflowSpec.description,\n    trigger: workflowSpec.trigger,\n    nodes_count: workflowSpec.nodes_sequence.length + 1,\n    dependencies: workflowSpec.dependencies || [],\n    error_handling: workflowSpec.error_handling || {},\n    rollback_plan: 'Keep previous version exported'\n  },\n  next_steps: [\n    '1. Test each node individually (Execute Step)',\n    '2. Test full workflow (Execute Workflow)',\n    '3. Test with real data (5-10 examples)',\n    '4. Monitor first 24h',\n    '5. Activate if tests pass (if not auto-activated)'\n  ]\n};\n\nreturn [{\n  json: {\n    success: input.success !== false,\n    report: report,\n    workflow_id: input.workflow_id || input.id,\n    _meta: $('Validate Workflow Spec').first().json._meta\n  }\n}];"
+      },
+      "id": "create-report",
+      "name": "Create Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1790,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log Operation (asynchrone, sans bloquer)\n// Pattern: Log après réponse webhook pour éviter timeout\nconst input = $input.first().json;\nconst validation = $('Validate Workflow Spec').first().json;\n\n// Log dans console (sera capturé par n8n logs)\nconsole.log('[IANA-WORKFLOW-FACTORY]', JSON.stringify({\n  workflow_id: input.workflow_id || input.report?.workflow_id,\n  action: 'create',\n  user_id: validation.user_id,\n  success: input.success !== false,\n  latency_ms: Date.now() - (validation._meta?.startTime || Date.now()),\n  request_id: validation._meta?.requestId\n}));\n\n// Retourner les données pour continuation (si nécessaire)\nreturn [{\n  json: input\n}];"
+      },
+      "id": "log-operation",
+      "name": "Log Operation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2010,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Response Final (après traitement complet)\n// Pattern: Merge by Index - toutes les branches terminées\nconst input = $input.first().json;\nconst validation = $('Validate Workflow Spec').first().json;\nconst startTime = validation._meta?.startTime || Date.now();\n\n// Récupérer le résultat de la branche Generate Workflow (index 1)\nconst generateResult = $input.all().find(item => item.json.workflowData)?.json || {};\nconst createResult = $input.all().find(item => item.json.id)?.json || {};\n\n// Success case\nif (createResult.id || input.workflow_id) {\n  return [{\n    json: {\n      success: true,\n      action: 'create_workflow',\n      data: {\n        workflow_id: createResult.id || input.workflow_id,\n        workflow_name: createResult.name || input.workflow_name,\n        status: 'created',\n        created_at: new Date().toISOString(),\n        request_id: validation._meta?.requestId\n      },\n      error: null,\n      meta: {\n        latency_ms: Date.now() - startTime,\n        timestamp: new Date().toISOString(),\n        method: 'cursor-n8n-100-percent'\n      }\n    }\n  }];\n}\n\n// Error case\nreturn [{\n  json: {\n    success: false,\n    action: 'create_workflow',\n    data: null,\n    error: {\n      code: input.errorCode || 'UNKNOWN_ERROR',\n      message: input.errorMessage || 'An error occurred'\n    },\n    meta: {\n      latency_ms: Date.now() - startTime,\n      timestamp: new Date().toISOString(),\n      request_id: validation._meta?.requestId,\n      method: 'cursor-n8n-100-percent'\n    }\n  }\n}];"
+      },
+      "id": "format-response-final",
+      "name": "Format Response Final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2230,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Response Early (avant traitement long)\n// Pattern: Respond Immediately selon méthode critique 2026\nconst validation = $input.first().json;\nconst startTime = validation._meta?.startTime || Date.now();\n\n// Réponse immédiate avec statut \"processing\"\nreturn [{\n  json: {\n    success: true,\n    action: 'create_workflow',\n    status: 'processing',\n    message: 'Workflow creation started, processing asynchronously',\n    request_id: validation._meta?.requestId,\n    meta: {\n      latency_ms: Date.now() - startTime,\n      timestamp: new Date().toISOString(),\n      method: 'cursor-n8n-100-percent'\n    }\n  }\n}];"
+      },
+      "id": "format-response-early",
+      "name": "Format Response Early",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        500
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        690,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "mergeByIndex",
+        "mergeByFields": {
+          "values": []
+        },
+        "options": {}
+      },
+      "id": "merge-branches",
+      "name": "Merge Branches",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        910,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Factory": {
+      "main": [
+        [
+          {
+            "node": "Validate Workflow Spec",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Workflow Spec": {
+      "main": [
+        [
+          {
+            "node": "Format Response Early",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Generate Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response Early": {
+      "main": [
+        [
+          {
+            "node": "Merge Branches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge Branches",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Branches": {
+      "main": [
+        [
+          {
+            "node": "API Create Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Create Workflow": {
+      "main": [
+        [
+          {
+            "node": "Prepare Testing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Testing": {
+      "main": [
+        [
+          {
+            "node": "Should Activate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Activate?": {
+      "main": [
+        [
+          {
+            "node": "API Activate Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Activate Workflow": {
+      "main": [
+        [
+          {
+            "node": "Create Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Report": {
+      "main": [
+        [
+          {
+            "node": "Log Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Operation": {
+      "main": [
+        [
+          {
+            "node": "Format Response Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response Final": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": []
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null
+}

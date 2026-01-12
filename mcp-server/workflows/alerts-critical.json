@@ -1,0 +1,86 @@
+{
+  "name": "Alerts Critical → Slack",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "alerts-critical",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7g8h-9i0j-1k2l3m4n5o6p",
+      "name": "Webhook Critical",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Grafana/Alertmanager payload\nconst body = $input.item.json.body || $input.item.json;\nconst alerts = body.alerts || [body];\n\nconst messages = alerts.map(alert => {\n  const status = alert.status || 'unknown';\n  const severity = alert.labels?.severity || 'critical';\n  const alertname = alert.labels?.alertname || 'Unknown Alert';\n  const instance = alert.labels?.instance || 'unknown';\n  const description = alert.annotations?.description || alert.annotations?.summary || 'No description';\n  \n  return {\n    status: status,\n    severity: severity,\n    alertname: alertname,\n    instance: instance,\n    description: description,\n    timestamp: new Date().toISOString()\n  };\n});\n\nreturn messages.map(msg => ({ json: msg }));"
+      },
+      "id": "b2c3d4e5-f6g7-8h9i-0j1k-2l3m4n5o6p7q",
+      "name": "Parse Alerts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Slack message\nconst alert = $input.item.json;\n\nconst emoji = alert.status === 'firing' ? '🚨' : '✅';\nconst color = alert.status === 'firing' ? 'danger' : 'good';\n\nconst slackMessage = {\n  channel: '#alerts-critical',\n  username: 'ALFA Alert Bot',\n  icon_emoji: ':rotating_light:',\n  attachments: [\n    {\n      color: color,\n      title: `${emoji} ${alert.alertname}`,\n      text: alert.description,\n      fields: [\n        {\n          title: 'Status',\n          value: alert.status.toUpperCase(),\n          short: true\n        },\n        {\n          title: 'Severity',\n          value: alert.severity.toUpperCase(),\n          short: true\n        },\n        {\n          title: 'Instance',\n          value: alert.instance,\n          short: false\n        }\n      ],\n      footer: 'ALFA Dashboard',\n      ts: Math.floor(Date.now() / 1000)\n    }\n  ]\n};\n\nreturn { json: slackMessage };"
+      },
+      "id": "c3d4e5f6-g7h8-9i0j-1k2l-3m4n5o6p7q8r",
+      "name": "Format Slack",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simulate Slack send (replace with real Slack node)\nconst message = $input.item.json;\n\nreturn {\n  json: {\n    sent: true,\n    channel: message.channel,\n    alert: message.attachments[0].title,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "d4e5f6g7-h8i9-0j1k-2l3m-4n5o6p7q8r9s",
+      "name": "Send to Slack",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Critical": {
+      "main": [
+        [
+          {
+            "node": "Parse Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Alerts": {
+      "main": [
+        [
+          {
+            "node": "Format Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Slack": {
+      "main": [
+        [
+          {
+            "node": "Send to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

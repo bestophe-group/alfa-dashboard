@@ -1,0 +1,941 @@
+{
+  "name": "iana-workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "workflow",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-workflow",
+      "name": "Webhook Workflow",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "iana-workflow-crud"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validation commune AVANT Switch\nconst body = $input.first().json.body || $input.first().json;\nconst { action, data, user_id, channel } = body;\n\n// Validation action\nif (!action) {\n  throw new Error('VALIDATION_ERROR: action is required');\n}\n\n// Validation user_id\nif (!user_id) {\n  throw new Error('VALIDATION_ERROR: user_id is required');\n}\n\n// Validation actions valides\nconst validActions = ['create', 'read', 'update', 'delete', 'list', 'activate', 'deactivate', 'test', 'execute'];\nif (!validActions.includes(action)) {\n  throw new Error(`VALIDATION_ERROR: action must be one of: ${validActions.join(', ')}`);\n}\n\n// Ajouter metadata\nreturn [{\n  json: {\n    action: action,\n    data: data || {},\n    user_id: user_id,\n    channel: channel || 'api',\n    _meta: {\n      startTime: Date.now(),\n      requestId: `${user_id}-${Date.now()}`\n    }\n  }\n}];"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "create"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "read"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "update"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "delete"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "list"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "activate"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "deactivate"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "test"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "execute"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "switch-action",
+      "name": "Switch Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: create\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.name) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.name is required for create',\n      action: 'create'\n    }\n  }];\n}\n\nif (!data.nodes) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.nodes is required for create',\n      action: 'create'\n    }\n  }];\n}\n\nconst workflowData = {\n  name: data.name,\n  nodes: data.nodes,\n  connections: data.connections || {},\n  settings: data.settings || { executionOrder: 'v1' },\n  staticData: data.staticData || null,\n  tags: data.tags || []\n};\n\nreturn [{\n  json: {\n    success: true,\n    action: 'create',\n    workflowData: workflowData,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-create",
+      "name": "Create Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/api/v1/workflows",
+        "method": "POST",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2RhNGJjNy1lY2ViLTQ1N2YtYTg3ZS1jYzkzODdlYjQ3MWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY4MjI5MTEwfQ.E1amsEqAQESuuvc0l2qABKXtIEwbxelnoubM1vh9xnM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": true,
+        "bodyParametersJson": "={{ JSON.stringify($json.workflowData) }}"
+      },
+      "id": "api-create",
+      "name": "API Create Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: read\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.workflowId) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.workflowId is required for read',\n      action: 'read'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'read',\n    workflowId: data.workflowId,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-read",
+      "name": "Read Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/api/v1/workflows/{{ $json.workflowId }}",
+        "method": "GET",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2RhNGJjNy1lY2ViLTQ1N2YtYTg3ZS1jYzkzODdlYjQ3MWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY4MjI5MTEwfQ.E1amsEqAQESuuvc0l2qABKXtIEwbxelnoubM1vh9xnM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "api-read",
+      "name": "API Read Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: update\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.workflowId) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.workflowId is required for update',\n      action: 'update'\n    }\n  }];\n}\n\nconst workflowData = {\n  id: data.workflowId,\n  name: data.name,\n  nodes: data.nodes,\n  connections: data.connections,\n  settings: data.settings,\n  staticData: data.staticData,\n  tags: data.tags\n};\n\nreturn [{\n  json: {\n    success: true,\n    action: 'update',\n    workflowId: data.workflowId,\n    workflowData: workflowData,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-update",
+      "name": "Update Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/api/v1/workflows/{{ $json.workflowId }}",
+        "method": "PUT",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2RhNGJjNy1lY2ViLTQ1N2YtYTg3ZS1jYzkzODdlYjQ3MWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY4MjI5MTEwfQ.E1amsEqAQESuuvc0l2qABKXtIEwbxelnoubM1vh9xnM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": true,
+        "bodyParametersJson": "={{ JSON.stringify($json.workflowData) }}"
+      },
+      "id": "api-update",
+      "name": "API Update Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: delete\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.workflowId) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.workflowId is required for delete',\n      action: 'delete'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'delete',\n    workflowId: data.workflowId,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-delete",
+      "name": "Delete Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/api/v1/workflows/{{ $json.workflowId }}",
+        "method": "DELETE",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2RhNGJjNy1lY2ViLTQ1N2YtYTg3ZS1jYzkzODdlYjQ3MWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY4MjI5MTEwfQ.E1amsEqAQESuuvc0l2qABKXtIEwbxelnoubM1vh9xnM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "api-delete",
+      "name": "API Delete Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: list\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nreturn [{\n  json: {\n    success: true,\n    action: 'list',\n    filters: {\n      active: data.active\n    },\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-list",
+      "name": "List Workflows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/api/v1/workflows",
+        "method": "GET",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2RhNGJjNy1lY2ViLTQ1N2YtYTg3ZS1jYzkzODdlYjQ3MWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY4MjI5MTEwfQ.E1amsEqAQESuuvc0l2qABKXtIEwbxelnoubM1vh9xnM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "api-list",
+      "name": "API List Workflows",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: activate\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.workflowId) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.workflowId is required for activate',\n      action: 'activate'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'activate',\n    workflowId: data.workflowId,\n    active: true,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-activate",
+      "name": "Activate Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/api/v1/workflows/{{ $json.workflowId }}/activate",
+        "method": "POST",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2RhNGJjNy1lY2ViLTQ1N2YtYTg3ZS1jYzkzODdlYjQ3MWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY4MjI5MTEwfQ.E1amsEqAQESuuvc0l2qABKXtIEwbxelnoubM1vh9xnM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": true
+      },
+      "id": "api-activate",
+      "name": "API Activate Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: deactivate\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.workflowId) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.workflowId is required for deactivate',\n      action: 'deactivate'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'deactivate',\n    workflowId: data.workflowId,\n    active: false,\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-deactivate",
+      "name": "Deactivate Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/api/v1/workflows/{{ $json.workflowId }}/deactivate",
+        "method": "POST",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2RhNGJjNy1lY2ViLTQ1N2YtYTg3ZS1jYzkzODdlYjQ3MWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY4MjI5MTEwfQ.E1amsEqAQESuuvc0l2qABKXtIEwbxelnoubM1vh9xnM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": true
+      },
+      "id": "api-deactivate",
+      "name": "API Deactivate Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: test\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.workflowId) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.workflowId is required for test',\n      action: 'test'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'test',\n    workflowId: data.workflowId,\n    inputData: data.inputData || {},\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-test",
+      "name": "Test Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/api/v1/workflows/{{ $json.workflowId }}/execute",
+        "method": "POST",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2RhNGJjNy1lY2ViLTQ1N2YtYTg3ZS1jYzkzODdlYjQ3MWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY4MjI5MTEwfQ.E1amsEqAQESuuvc0l2qABKXtIEwbxelnoubM1vh9xnM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": true,
+        "bodyParametersJson": "={{ JSON.stringify({data: $json.inputData}) }}"
+      },
+      "id": "api-test",
+      "name": "API Test Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: execute\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\nif (!data.workflowId) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.workflowId is required for execute',\n      action: 'execute'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    action: 'execute',\n    workflowId: data.workflowId,\n    inputData: data.inputData || {},\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-execute",
+      "name": "Execute Workflow",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/api/v1/workflows/{{ $json.workflowId }}/execute",
+        "method": "POST",
+        "authentication": "headerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2RhNGJjNy1lY2ViLTQ1N2YtYTg3ZS1jYzkzODdlYjQ3MWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzY4MjI5MTEwfQ.E1amsEqAQESuuvc0l2qABKXtIEwbxelnoubM1vh9xnM"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": true,
+        "bodyParametersJson": "={{ JSON.stringify({data: $json.inputData}) }}"
+      },
+      "id": "api-execute",
+      "name": "API Execute Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll"
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        1350,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT iana.log_operation($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) as log_id",
+        "additionalFields": {
+          "queryParameters": "={{ ['iana-workflow', $json.action, $json.user_id, $json.channel || 'api', JSON.stringify($json.data || {}), JSON.stringify($json), $json.success !== false, $json.errorCode || null, $json.errorMessage || null, Date.now() - ($json._meta?.startTime || Date.now()), $json._meta?.requestId || null] }}"
+        },
+        "options": {}
+      },
+      "id": "log-operation",
+      "name": "Log Operation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1570,
+        450
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Response Standardis\u00e9e\nconst input = $input.first().json;\nconst validation = $('Validate Input').first().json;\nconst startTime = validation._meta?.startTime || Date.now();\n\n// Success case\nif (input.success !== false && !input.isError) {\n  return [{\n    json: {\n      success: true,\n      action: validation.action,\n      data: input.data || input,\n      error: null,\n      meta: {\n        latency_ms: Date.now() - startTime,\n        timestamp: new Date().toISOString(),\n        request_id: validation._meta?.requestId\n      }\n    }\n  }];\n}\n\n// Error case\nreturn [{\n  json: {\n    success: false,\n    action: validation.action,\n    data: null,\n    error: {\n      code: input.errorCode || 'UNKNOWN_ERROR',\n      message: input.errorMessage || input.message || 'An error occurred'\n    },\n    meta: {\n      latency_ms: Date.now() - startTime,\n      timestamp: new Date().toISOString(),\n      request_id: validation._meta?.requestId\n    }\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1790,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2010,
+        450
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Workflow": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Switch Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Action": {
+      "main": [
+        [
+          {
+            "node": "Create Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delete Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "List Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Activate Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Deactivate Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Test Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Log Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Operation": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Workflow": {
+      "main": [
+        [
+          {
+            "node": "API Create Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Create Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Workflow": {
+      "main": [
+        [
+          {
+            "node": "API Read Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Read Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Workflow": {
+      "main": [
+        [
+          {
+            "node": "API Update Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Update Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Workflow": {
+      "main": [
+        [
+          {
+            "node": "API Delete Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Delete Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Workflows": {
+      "main": [
+        [
+          {
+            "node": "API List Workflows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API List Workflows": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Activate Workflow": {
+      "main": [
+        [
+          {
+            "node": "API Activate Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Activate Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deactivate Workflow": {
+      "main": [
+        [
+          {
+            "node": "API Deactivate Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Deactivate Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Workflow": {
+      "main": [
+        [
+          {
+            "node": "API Test Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Test Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Workflow": {
+      "main": [
+        [
+          {
+            "node": "API Execute Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Execute Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "CRUD"
+    },
+    {
+      "name": "Workflows"
+    }
+  ],
+  "active": false
+}

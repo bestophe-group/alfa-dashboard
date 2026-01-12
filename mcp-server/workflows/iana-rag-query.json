@@ -1,0 +1,139 @@
+{
+  "name": "IANA RAG Query",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "iana/rag/query",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-rag-001",
+      "name": "Webhook RAG Query",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse RAG query request\nconst body = $input.item.json.body || $input.item.json;\n\nreturn {\n  json: {\n    query: body.query || '',\n    limit: body.limit || 5,\n    threshold: body.threshold || 0.7,\n    filters: body.filters || {},\n    include_metadata: body.include_metadata !== false\n  }\n};"
+      },
+      "id": "parse-query-002",
+      "name": "Parse Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate embedding for query (placeholder - will use real embedding API)\nconst query = $input.item.json.query;\n\n// For now, return mock embedding (in production, call OpenAI/Cohere/etc.)\nconst mockEmbedding = Array(1536).fill(0).map(() => Math.random());\n\nreturn {\n  json: {\n    query: query,\n    embedding: mockEmbedding,\n    embedding_model: 'text-embedding-ada-002'\n  }\n};"
+      },
+      "id": "generate-embedding-003",
+      "name": "Generate Embedding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT doc_id, title, content, metadata, category, embedding <-> $1::vector AS distance FROM rag.documents WHERE embedding <-> $1::vector < $2 ORDER BY distance ASC LIMIT $3",
+        "options": {}
+      },
+      "id": "vector-search-004",
+      "name": "Vector Search",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [900, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-iana",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format RAG results\nconst results = $input.all();\nconst params = $('Parse Query').item.json;\n\nreturn {\n  json: {\n    success: true,\n    query: params.query,\n    results_count: results.length,\n    results: results.map(r => ({\n      doc_id: r.json.doc_id,\n      title: r.json.title,\n      content: r.json.content,\n      category: r.json.category,\n      similarity: 1 - r.json.distance, // Convert distance to similarity\n      metadata: params.include_metadata ? r.json.metadata : undefined\n    })),\n    retrieved_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "format-results-005",
+      "name": "Format Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-006",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Webhook RAG Query": {
+      "main": [
+        [
+          {
+            "node": "Parse Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Query": {
+      "main": [
+        [
+          {
+            "node": "Generate Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embedding": {
+      "main": [
+        [
+          {
+            "node": "Vector Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vector Search": {
+      "main": [
+        [
+          {
+            "node": "Format Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Results": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "id": "iana-rag-query"
+}

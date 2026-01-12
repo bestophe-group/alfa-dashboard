@@ -1,0 +1,208 @@
+{
+  "name": "iana-rag-auto-save",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rag/auto-save",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-auto-save",
+      "name": "Webhook Auto-Save",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validation commune AVANT traitement\nconst body = $input.first().json.body || $input.first().json;\nconst { action, data, user_id } = body;\n\n// Validation action\nif (!action) {\n  throw new Error('VALIDATION_ERROR: action is required');\n}\n\n// Validation user_id\nif (!user_id) {\n  throw new Error('VALIDATION_ERROR: user_id is required');\n}\n\n// Validation data\nif (!data) {\n  throw new Error('VALIDATION_ERROR: data is required');\n}\n\nif (!data.title) {\n  throw new Error('VALIDATION_ERROR: data.title is required');\n}\n\nif (!data.content) {\n  throw new Error('VALIDATION_ERROR: data.content is required');\n}\n\n// Validation actions valides\nconst validActions = ['save'];\nif (!validActions.includes(action)) {\n  throw new Error(`VALIDATION_ERROR: action must be one of: ${validActions.join(', ')}`);\n}\n\n// Ajouter metadata\nreturn [{\n  json: {\n    action: action,\n    data: data,\n    user_id: user_id,\n    channel: 'api',\n    _meta: {\n      startTime: Date.now(),\n      requestId: `${user_id}-${Date.now()}`\n    }\n  }\n}];"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Préparer données pour rag.ingest_document()\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\n// Formater metadata\nconst metadata = {\n  source: 'cursor_conversation',\n  user_id: user_id,\n  timestamp: new Date().toISOString(),\n  auto_saved: true,\n  ...(data.metadata || {})\n};\n\nreturn [{\n  json: {\n    title: data.title,\n    content: data.content,\n    source_type: data.source_type || 'markdown',\n    source_path: data.source_path || null,\n    metadata: metadata,\n    project: data.project || 'ALFA',\n    category: data.category || 'knowledge',\n    priority: data.priority || 'P2',\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "prepare-data",
+      "name": "Prepare Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT rag.ingest_document(\n  $1::text,  -- title\n  $2::text,  -- content\n  $3::text,  -- source_type\n  $4::text,  -- source_path\n  $5::jsonb, -- metadata\n  $6::text,  -- project\n  $7::text,  -- category\n  $8::text   -- priority\n) AS document_id",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.title, $json.content, $json.source_type, $json.source_path, JSON.stringify($json.metadata), $json.project, $json.category, $json.priority] }}"
+        },
+        "options": {}
+      },
+      "id": "ingest-document",
+      "name": "Ingest Document",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        910,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT iana.log_operation($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) as log_id",
+        "additionalFields": {
+          "queryParameters": "={{ ['iana-rag-auto-save', $('Validate Input').first().json.action, $('Validate Input').first().json.user_id, 'api', JSON.stringify($('Validate Input').first().json.data || {}), JSON.stringify($json), $json.document_id ? true : false, null, null, Date.now() - ($('Validate Input').first().json._meta?.startTime || Date.now()), $('Validate Input').first().json._meta?.requestId || null] }}"
+        },
+        "options": {}
+      },
+      "id": "log-operation",
+      "name": "Log Operation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1130,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Response Standardisée\nconst input = $input.first().json;\nconst validation = $('Validate Input').first().json;\nconst startTime = validation._meta?.startTime || Date.now();\n\n// Success case\nif (input.document_id) {\n  return [{\n    json: {\n      success: true,\n      action: validation.action,\n      data: {\n        document_id: input.document_id,\n        title: $('Prepare Data').first().json.title,\n        category: $('Prepare Data').first().json.category\n      },\n      error: null,\n      meta: {\n        latency_ms: Date.now() - startTime,\n        timestamp: new Date().toISOString(),\n        request_id: validation._meta?.requestId\n      }\n    }\n  }];\n}\n\n// Error case\nreturn [{\n  json: {\n    success: false,\n    action: validation.action,\n    data: null,\n    error: {\n      code: 'INGEST_ERROR',\n      message: 'Failed to ingest document'\n    },\n    meta: {\n      latency_ms: Date.now() - startTime,\n      timestamp: new Date().toISOString(),\n      request_id: validation._meta?.requestId\n    }\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1570,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Auto-Save": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Prepare Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Data": {
+      "main": [
+        [
+          {
+            "node": "Ingest Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest Document": {
+      "main": [
+        [
+          {
+            "node": "Log Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Operation": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "RAG"
+    },
+    {
+      "name": "Knowledge Base"
+    },
+    {
+      "name": "P1"
+    }
+  ],
+  "active": false
+}

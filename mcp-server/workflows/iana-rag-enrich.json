@@ -1,0 +1,82 @@
+{
+  "name": "iana-rag-enrich",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Parse RAG enrich request\nconst input = $input.first().json.data || $input.first().json;\n\nif (!input.doc_id) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'doc_id is required'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    doc_id: input.doc_id,\n    chunk_size: input.chunk_size || 1000,\n    overlap: input.overlap || 200,\n    generate_embeddings: input.generate_embeddings !== false\n  }\n}];"
+      },
+      "id": "parse-input",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT rag.chunk_document($1, $2, $3) as chunk_count",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.doc_id, $json.chunk_size, $json.overlap] }}"
+        },
+        "options": {}
+      },
+      "id": "chunk-document",
+      "name": "Chunk Document",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [460, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-iana",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format response\nconst result = $input.first().json;\nconst parseData = $('Parse Input').first().json;\n\nreturn [{\n  json: {\n    success: true,\n    data: {\n      doc_id: parseData.doc_id,\n      chunk_count: result.chunk_count,\n      chunks_created: true,\n      embeddings_pending: parseData.generate_embeddings\n    }\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Chunk Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Document": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "RAG"
+    }
+  ]
+}

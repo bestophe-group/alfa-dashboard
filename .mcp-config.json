@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "n8n-integrated": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "supergateway",
+        "--streamableHttp",
+        "http://localhost:5678/mcp-server/http",
+        "--header",
+        "authorization:Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2RhNGJjNy1lY2ViLTQ1N2YtYTg3ZS1jYzkzODdlYjQ3MWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJtY3Atc2VydmVyLWFwaSIsImp0aSI6IjZmNjQ5ZDZiLTQ5ODctNDkzYS1iMDQ2LWM1YjNjMzVlMzFjOSIsImlhdCI6MTc2ODIzNDY0MX0.NV6DM3WlRUvcRvQpDmXR4e-z2qp0UW2ZgG9magMnG5g"
+      ]
+    }
+  }
+}

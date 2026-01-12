@@ -122,10 +122,24 @@ TIER 2 : Index RAG PostgreSQL (0 token jusqu'à requête)
 TIER 3 : Outils MCP réels (lazy loading on-demand)
 ```
 
+### 🚨 RÈGLE OBLIGATOIRE : RAG First
+
+**TOUJOURS chercher dans le RAG AVANT de demander des informations à l'utilisateur.**
+
+Cette règle s'applique à **TOUS** les tokens, credentials, configurations, et informations de projet.
+
+**Workflow obligatoire** :
+1. ✅ Chercher dans le RAG d'abord : `SELECT * FROM rag.search_fulltext('query', 10);`
+2. ✅ Vérifier les fichiers de configuration (`.env`, `docker-compose.yml`, etc.)
+3. ❌ Ne demander à l'utilisateur QUE si aucun résultat valide trouvé
+
+**Référence complète** : `.cursor/rules/RAG-FIRST.md`
+
 ### Quand chercher dans le RAG
 
 | Situation | Action |
 |-----------|--------|
+| **Token/Credential/Configuration** | `SELECT * FROM rag.search_fulltext('{service} API key', 10);` |
 | Besoin d'un outil MCP inconnu | `SELECT * FROM rag.search_mcp_tools_simple('ta requête', 5);` |
 | Besoin de contexte projet | `SELECT * FROM rag.search_hybrid('ta requête', embedding, 5);` |
 | Lister les serveurs MCP | `SELECT * FROM rag.list_mcp_servers();` |

@@ -1,0 +1,92 @@
+{
+  "name": "iana-l1-handler",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// L1 Handler: Simple chat response (no RAG)\n// Input: { query, user_id, channel, conversation_id }\nconst input = $input.first().json;\n\nreturn [{\n  json: {\n    query: input.query,\n    user_id: input.user_id,\n    channel: input.channel,\n    conversation_id: input.conversation_id,\n    tier: 'L1',\n    handler: 'l1-simple-chat'\n  }\n}];"
+      },
+      "id": "parse-input",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare CLI command for L1\nconst parseData = $('Parse Input').first().json;\nconst query = parseData.query || '';\n\nconst prompt = `${query}\\n\\nRespond helpfully and concisely.`;\nconst escapedPrompt = prompt.replace(/\"/g, '\\\\\"').replace(/\\$/g, '\\\\$');\n\nreturn [{\n  json: {\n    command: `node /Users/arnaud/Documents/ALFA-Agent-Method/alfa-dashboard/scripts/llm-cli-wrapper.js claude-code \"${escapedPrompt}\" claude-3-haiku`,\n    prompt: prompt\n  }\n}];"
+      },
+      "id": "prepare-command",
+      "name": "Prepare Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute CLI wrapper via child_process\nconst { execSync } = require('child_process');\nconst command = $input.first().json.command || '';\n\ntry {\n  const result = execSync(command, {\n    encoding: 'utf8',\n    maxBuffer: 10 * 1024 * 1024,\n    timeout: 30000\n  });\n  \n  // Parse JSON response\n  let cliResponse;\n  try {\n    cliResponse = JSON.parse(result.trim());\n  } catch (e) {\n    cliResponse = { response: result.trim(), error: 'JSON parse failed' };\n  }\n  \n  return [{\n    json: {\n      stdout: result.trim(),\n      stderr: '',\n      ...cliResponse\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      stdout: '',\n      stderr: error.message,\n      error: error.message\n    }\n  }];\n}"
+      },
+      "id": "llm-chat",
+      "name": "LLM Chat (CLI)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format L1 response (from CLI)\nconst input = $input.first().json;\nconst parseData = $('Parse Input').first().json;\n\n// Extract response from CLI output\nlet cliResponse;\ntry {\n  const cliOutput = input.stdout || input.stderr || '{}';\n  cliResponse = JSON.parse(cliOutput.trim());\n} catch (e) {\n  cliResponse = { response: input.stdout || input.stderr || 'No response' };\n}\n\nconst llmResponse = cliResponse.response || cliResponse.text || '';\n\nreturn [{\n  json: {\n    tier: 'L1',\n    response: llmResponse,\n    query: parseData.query,\n    user_id: parseData.user_id,\n    channel: parseData.channel,\n    conversation_id: parseData.conversation_id,\n    handler: 'l1-simple-chat',\n    latency_ms: Date.now() - (parseData._meta?.startTime || Date.now())\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Prepare Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Command": {
+      "main": [
+        [
+          {
+            "node": "LLM Chat (CLI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Chat (CLI)": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "L1"
+    }
+  ]
+}

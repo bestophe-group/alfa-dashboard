@@ -1,0 +1,96 @@
+{
+  "name": "IANA Log",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "iana/log",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-log-001",
+      "name": "Webhook Log Entry",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse log entry payload\nconst body = $input.item.json.body || $input.item.json;\n\nreturn {\n  json: {\n    conversation_id: body.conversation_id || null,\n    user_id: body.user_id || 'anonymous',\n    role: body.role || 'system',\n    content: body.content || '',\n    tier: body.tier || null,\n    metadata: body.metadata || {},\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "parse-log-002",
+      "name": "Parse Log Entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO iana.messages (conversation_id, role, content, tier, metadata, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING message_id, created_at",
+        "options": {}
+      },
+      "id": "db-insert-003",
+      "name": "Insert to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [680, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-iana",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Return log confirmation\nconst result = $input.item.json;\n\nreturn {\n  json: {\n    success: true,\n    message_id: result.message_id || result[0]?.message_id,\n    logged_at: result.created_at || result[0]?.created_at || new Date().toISOString()\n  }\n};"
+      },
+      "id": "format-response-004",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Log Entry": {
+      "main": [
+        [
+          {
+            "node": "Parse Log Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Log Entry": {
+      "main": [
+        [
+          {
+            "node": "Insert to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "id": "iana-log"
+}

@@ -17,14 +17,19 @@
       "typeVersion": 2.4, "position": [680, 300]
     },
     {
-      "parameters": {"model": "claude-3-haiku-20240307", "prompt": "Classify: L1/L2/L3. Query: {{ $json.query }}. Respond JSON: {\"tier\":\"LX\",\"confidence\":0.9}"},
-      "id": "classifier", "name": "Classifier", "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
-      "typeVersion": 1, "position": [900, 300]
+      "parameters": {"jsCode": "const query = $('parse').item.json.query || ''; const prompt = `Classify: L1/L2/L3. Query: ${query}. Respond JSON: {\\\"tier\\\":\\\"LX\\\",\\\"confidence\\\":0.9}`; const escaped = prompt.replace(/\"/g, '\\\\\"').replace(/\\$/g, '\\\\$'); return {json: {command: `node /Users/arnaud/Documents/ALFA-Agent-Method/alfa-dashboard/scripts/llm-cli-wrapper.js claude-code \"${escaped}\" claude-3-haiku`, query: query}};"},
+      "id": "prepare-classifier", "name": "Prepare Classifier", "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [900, 300]
     },
     {
-      "parameters": {"jsCode": "const r = JSON.parse($input.item.json.response); return {json: {tier: r.tier, confidence: r.confidence}};"},
-      "id": "parseClass", "name": "ParseClass", "type": "n8n-nodes-base.code",
+      "parameters": {"jsCode": "const { execSync } = require('child_process'); const command = $input.first().json.command || ''; try { const result = execSync(command, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, timeout: 30000 }); let cliResponse; try { cliResponse = JSON.parse(result.trim()); } catch (e) { cliResponse = { response: result.trim() }; } return [{ json: { stdout: result.trim(), ...cliResponse } }]; } catch (error) { return [{ json: { stdout: '', stderr: error.message, error: error.message } }]; }"},
+      "id": "classifier", "name": "Classifier (CLI)", "type": "n8n-nodes-base.code",
       "typeVersion": 2, "position": [1120, 300]
+    },
+    {
+      "parameters": {"jsCode": "let cliResponse; try { const cliOutput = $input.item.json.stdout || $input.item.json.stderr || '{}'; cliResponse = JSON.parse(cliOutput.trim()); } catch (e) { cliResponse = { response: $input.item.json.stdout || '{}' }; } let r; try { const jsonMatch = cliResponse.response.match(/\\{[^}]+\\}/); r = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(cliResponse.response); } catch (e) { r = { tier: 'L1', confidence: 0.5 }; } return {json: {tier: r.tier || 'L1', confidence: r.confidence || 0.5}};"},
+      "id": "parseClass", "name": "ParseClass", "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [1340, 300]
     },
     {
       "parameters": {"conditions": {"string": [{"value1": "={{ $json.tier }}", "value2": "L1"}]}},
@@ -32,9 +37,14 @@
       "typeVersion": 1, "position": [1340, 300]
     },
     {
-      "parameters": {"model": "claude-3-haiku-20240307", "prompt": "={{ $('parse').item.json.query }}"},
-      "id": "l1", "name": "L1-Haiku", "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
-      "typeVersion": 1, "position": [1560, 120]
+      "parameters": {"jsCode": "const query = $('parse').item.json.query || ''; const prompt = `${query}\\n\\nRespond helpfully and concisely.`; const escaped = prompt.replace(/\"/g, '\\\\\"').replace(/\\$/g, '\\\\$'); return {json: {command: `node /Users/arnaud/Documents/ALFA-Agent-Method/alfa-dashboard/scripts/llm-cli-wrapper.js claude-code \"${escaped}\" claude-3-haiku`}};"},
+      "id": "prepare-l1", "name": "Prepare L1", "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [1560, 120]
+    },
+    {
+      "parameters": {"jsCode": "const { execSync } = require('child_process'); const command = $input.first().json.command || ''; try { const result = execSync(command, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, timeout: 30000 }); let cliResponse; try { cliResponse = JSON.parse(result.trim()); } catch (e) { cliResponse = { response: result.trim() }; } return [{ json: { stdout: result.trim(), ...cliResponse } }]; } catch (error) { return [{ json: { stdout: '', stderr: error.message, error: error.message } }]; }"},
+      "id": "l1", "name": "L1-Haiku (CLI)", "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [1780, 120]
     },
     {
       "parameters": {"jsCode": "return {json: {tier: 'L2', response: 'Workflow executed', latency_ms: 500}};"},
@@ -42,9 +52,14 @@
       "typeVersion": 2, "position": [1560, 300]
     },
     {
-      "parameters": {"model": "claude-3-5-sonnet-20241022", "prompt": "={{ $('parse').item.json.query }}"},
-      "id": "l3", "name": "L3-Sonnet", "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
-      "typeVersion": 1, "position": [1560, 480]
+      "parameters": {"jsCode": "const query = $('parse').item.json.query || ''; const prompt = `You are an expert AI assistant. Analyze this query deeply: ${query}`; const escaped = prompt.replace(/\"/g, '\\\\\"').replace(/\\$/g, '\\\\$'); return {json: {command: `node /Users/arnaud/Documents/ALFA-Agent-Method/alfa-dashboard/scripts/llm-cli-wrapper.js cursor-agent \"${escaped}\" claude-3-5-sonnet`}};"},
+      "id": "prepare-l3", "name": "Prepare L3", "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [1560, 480]
+    },
+    {
+      "parameters": {"jsCode": "const { execSync } = require('child_process'); const command = $input.first().json.command || ''; try { const result = execSync(command, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, timeout: 60000 }); let cliResponse; try { cliResponse = JSON.parse(result.trim()); } catch (e) { cliResponse = { response: result.trim() }; } return [{ json: { stdout: result.trim(), ...cliResponse } }]; } catch (error) { return [{ json: { stdout: '', stderr: error.message, error: error.message } }]; }"},
+      "id": "l3", "name": "L3-Sonnet (CLI)", "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [1780, 480]
     },
     {
       "parameters": {"operation": "executeQuery", "query": "INSERT INTO iana.messages (conversation_id, role, content) VALUES ($1, 'user', $2)"},
@@ -57,6 +72,11 @@
       "typeVersion": 2.4, "position": [2000, 300]
     },
     {
+      "parameters": {"jsCode": "let response = ''; const input = $input.item.json; if (input.stdout) { try { const cli = JSON.parse(input.stdout.trim()); response = cli.response || cli.text || input.stdout; } catch (e) { response = input.stdout; } } else { response = input.response || input.text || 'No response'; } return {json: {tier: $('parseClass').item.json.tier, response: response}};"},
+      "id": "format-response", "name": "Format Response", "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [2000, 300]
+    },
+    {
       "parameters": {"respondWith": "json", "responseBody": "={{ {tier: $json.tier, response: $json.response} }}"},
       "id": "respond", "name": "Respond", "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1, "position": [2220, 300]
@@ -65,21 +85,25 @@
   "connections": {
     "webhook": {"main": [[{"node": "parse", "type": "main", "index": 0}]]},
     "parse": {"main": [[{"node": "conversation", "type": "main", "index": 0}]]},
-    "conversation": {"main": [[{"node": "classifier", "type": "main", "index": 0}]]},
-    "classifier": {"main": [[{"node": "parseClass", "type": "main", "index": 0}]]},
+    "conversation": {"main": [[{"node": "Prepare Classifier", "type": "main", "index": 0}]]},
+    "Prepare Classifier": {"main": [[{"node": "Classifier (CLI)", "type": "main", "index": 0}]]},
+    "Classifier (CLI)": {"main": [[{"node": "parseClass", "type": "main", "index": 0}]]},
     "parseClass": {"main": [[{"node": "switch", "type": "main", "index": 0}]]},
     "switch": {
       "main": [
-        [{"node": "l1", "type": "main", "index": 0}],
+        [{"node": "Prepare L1", "type": "main", "index": 0}],
         [{"node": "l2", "type": "main", "index": 0}],
-        [{"node": "l3", "type": "main", "index": 0}]
+        [{"node": "Prepare L3", "type": "main", "index": 0}]
       ]
     },
-    "l1": {"main": [[{"node": "loguser", "type": "main", "index": 0}]]},
+    "Prepare L1": {"main": [[{"node": "L1-Haiku (CLI)", "type": "main", "index": 0}]]},
+    "L1-Haiku (CLI)": {"main": [[{"node": "loguser", "type": "main", "index": 0}]]},
     "l2": {"main": [[{"node": "loguser", "type": "main", "index": 0}]]},
-    "l3": {"main": [[{"node": "loguser", "type": "main", "index": 0}]]},
+    "Prepare L3": {"main": [[{"node": "L3-Sonnet (CLI)", "type": "main", "index": 0}]]},
+    "L3-Sonnet (CLI)": {"main": [[{"node": "loguser", "type": "main", "index": 0}]]},
     "loguser": {"main": [[{"node": "logassist", "type": "main", "index": 0}]]},
-    "logassist": {"main": [[{"node": "respond", "type": "main", "index": 0}]]}
+    "logassist": {"main": [[{"node": "format-response", "type": "main", "index": 0}]]},
+    "format-response": {"main": [[{"node": "respond", "type": "main", "index": 0}]]}
   },
   "active": false,
   "settings": {},

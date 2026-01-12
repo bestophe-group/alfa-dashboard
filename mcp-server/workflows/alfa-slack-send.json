@@ -1,0 +1,181 @@
+{
+  "name": "ALFA Slack Send",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "alfa/slack/send",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-slack-001",
+      "name": "Webhook Slack Send",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Slack message request\nconst body = $input.item.json.body || $input.item.json;\n\nreturn {\n  json: {\n    channel: body.channel || '#general',\n    text: body.text || body.message || '',\n    username: body.username || 'ALFA Bot',\n    icon_emoji: body.icon_emoji || ':robot_face:',\n    attachments: body.attachments || [],\n    blocks: body.blocks || [],\n    thread_ts: body.thread_ts || null,\n    unfurl_links: body.unfurl_links !== false,\n    unfurl_media: body.unfurl_media !== false\n  }\n};"
+      },
+      "id": "parse-message-002",
+      "name": "Parse Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate message\nconst msg = $input.item.json;\n\nif (!msg.text && msg.attachments.length === 0 && msg.blocks.length === 0) {\n  throw new Error('Message must have text, attachments, or blocks');\n}\n\nif (!msg.channel.startsWith('#') && !msg.channel.startsWith('@') && !msg.channel.match(/^[A-Z0-9]+$/)) {\n  throw new Error('Invalid channel format. Use #channel, @user, or channel ID');\n}\n\nreturn { json: msg };"
+      },
+      "id": "validate-003",
+      "name": "Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format for Slack API\nconst msg = $input.item.json;\n\nconst payload = {\n  channel: msg.channel,\n  text: msg.text,\n  username: msg.username,\n  icon_emoji: msg.icon_emoji,\n  unfurl_links: msg.unfurl_links,\n  unfurl_media: msg.unfurl_media\n};\n\nif (msg.attachments && msg.attachments.length > 0) {\n  payload.attachments = JSON.stringify(msg.attachments);\n}\n\nif (msg.blocks && msg.blocks.length > 0) {\n  payload.blocks = JSON.stringify(msg.blocks);\n}\n\nif (msg.thread_ts) {\n  payload.thread_ts = msg.thread_ts;\n}\n\nreturn { json: payload };"
+      },
+      "id": "format-api-004",
+      "name": "Format for API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simulate Slack API call (replace with real Slack node in production)\nconst payload = $input.item.json;\n\n// Mock successful Slack response\nreturn {\n  json: {\n    ok: true,\n    channel: payload.channel,\n    ts: `${Date.now() / 1000}`,\n    message: {\n      text: payload.text,\n      username: payload.username,\n      bot_id: 'B0ALFABOT',\n      type: 'message',\n      subtype: 'bot_message'\n    },\n    sent_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "send-slack-005",
+      "name": "Send to Slack",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO iana.notification_logs (channel, message_type, payload, status, sent_at) VALUES ($1, 'slack', $2, 'sent', $3) RETURNING log_id",
+        "options": {}
+      },
+      "id": "log-notification-006",
+      "name": "Log Notification",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1340, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-iana",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format response\nconst slackResponse = $('Send to Slack').item.json;\nconst logResult = $input.item.json;\n\nreturn {\n  json: {\n    success: slackResponse.ok,\n    channel: slackResponse.channel,\n    message_ts: slackResponse.ts,\n    log_id: logResult.log_id || logResult[0]?.log_id,\n    sent_at: slackResponse.sent_at\n  }\n};"
+      },
+      "id": "format-response-007",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-008",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Slack Send": {
+      "main": [
+        [
+          {
+            "node": "Parse Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Message": {
+      "main": [
+        [
+          {
+            "node": "Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate": {
+      "main": [
+        [
+          {
+            "node": "Format for API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format for API": {
+      "main": [
+        [
+          {
+            "node": "Send to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Slack": {
+      "main": [
+        [
+          {
+            "node": "Log Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Notification": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "id": "alfa-slack-send"
+}

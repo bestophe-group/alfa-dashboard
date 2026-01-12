@@ -1,0 +1,445 @@
+{
+  "name": "iana-test",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "test",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-test",
+      "name": "Webhook Test",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "iana-test-workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validation commune AVANT Switch\nconst body = $input.first().json.body || $input.first().json;\nconst { action, data, user_id, channel } = body;\n\n// Validation action\nif (!action) {\n  throw new Error('VALIDATION_ERROR: action is required');\n}\n\n// Validation user_id\nif (!user_id) {\n  throw new Error('VALIDATION_ERROR: user_id is required');\n}\n\n// Validation actions valides\nconst validActions = ['workflow', 'all', 'report'];\nif (!validActions.includes(action)) {\n  throw new Error(`VALIDATION_ERROR: action must be one of: ${validActions.join(', ')}`);\n}\n\n// Ajouter metadata\nreturn [{\n  json: {\n    action: action,\n    data: data || {},\n    user_id: user_id,\n    channel: channel || 'api',\n    _meta: {\n      startTime: Date.now(),\n      requestId: `${user_id}-${Date.now()}`\n    }\n  }\n}];"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "workflow"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "all"
+                  }
+                ]
+              }
+            },
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "operation": "equals",
+                    "value2": "report"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "fallbackOutput": "extra"
+      },
+      "id": "switch-action",
+      "name": "Switch Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: workflow - Tester un workflow spécifique\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\n// Validation\nif (!data.workflow_name) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.workflow_name is required for workflow test',\n      action: 'workflow'\n    }\n  }];\n}\n\nif (!data.action_name) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'data.action_name is required for workflow test',\n      action: 'workflow'\n    }\n  }];\n}\n\n// Configuration des workflows\nconst workflowsConfig = {\"iana-rag-document\": {\"endpoint\": \"rag/document\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"search\", \"chunk\"]}, \"iana-tool\": {\"endpoint\": \"tool\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"search\", \"execute\"]}, \"iana-credential\": {\"endpoint\": \"credential\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"test\"]}, \"iana-workflow\": {\"endpoint\": \"workflow\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"activate\", \"deactivate\", \"test\", \"execute\"]}, \"iana-docker\": {\"endpoint\": \"docker\", \"actions\": [\"status\", \"start\", \"stop\", \"restart\", \"logs\", \"inspect\", \"cleanup\"]}, \"iana-postgres\": {\"endpoint\": \"postgres\", \"actions\": [\"query\", \"backup\", \"restore\", \"vacuum\", \"analyze\", \"status\"]}, \"iana-backup\": {\"endpoint\": \"backup\", \"actions\": [\"create\", \"list\", \"restore\", \"delete\", \"schedule\"]}, \"iana-security\": {\"endpoint\": \"security\", \"actions\": [\"audit\", \"scan\", \"report\", \"alert\"]}, \"iana-redis\": {\"endpoint\": \"redis\", \"actions\": [\"get\", \"set\", \"delete\", \"list\", \"flush\", \"info\", \"status\"]}, \"iana-monitoring\": {\"endpoint\": \"monitoring\", \"actions\": [\"query\", \"alert\", \"dashboard\", \"status\"]}};\n\nconst workflowName = data.workflow_name;\nconst actionName = data.action_name;\nconst testData = data.test_data || {};\n\nif (!workflowsConfig[workflowName]) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: `Workflow ${workflowName} not found in config`,\n      action: 'workflow'\n    }\n  }];\n}\n\nif (!workflowsConfig[workflowName].actions.includes(actionName)) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: `Action ${actionName} not found in workflow ${workflowName}`,\n      action: 'workflow'\n    }\n  }];\n}\n\nconst endpoint = workflowsConfig[workflowName].endpoint;\nconst webhookUrl = `http://localhost:5678/webhook/${endpoint}`;\n\nreturn [{\n  json: {\n    success: true,\n    action: 'workflow',\n    workflow_name: workflowName,\n    action_name: actionName,\n    endpoint: endpoint,\n    webhook_url: webhookUrl,\n    test_data: {\n      action: actionName,\n      data: testData,\n      user_id: user_id,\n      channel: 'test'\n    },\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-workflow",
+      "name": "Prepare Workflow Test",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.webhook_url }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersJson": "={{ JSON.stringify($json.test_data) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-test-workflow",
+      "name": "Test Workflow HTTP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: all - Tester tous les workflows\nconst input = $input.first().json;\nconst { user_id } = input;\n\n// Configuration des workflows\nconst workflowsConfig = {\"iana-rag-document\": {\"endpoint\": \"rag/document\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"search\", \"chunk\"]}, \"iana-tool\": {\"endpoint\": \"tool\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"search\", \"execute\"]}, \"iana-credential\": {\"endpoint\": \"credential\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"test\"]}, \"iana-workflow\": {\"endpoint\": \"workflow\", \"actions\": [\"create\", \"read\", \"update\", \"delete\", \"list\", \"activate\", \"deactivate\", \"test\", \"execute\"]}, \"iana-docker\": {\"endpoint\": \"docker\", \"actions\": [\"status\", \"start\", \"stop\", \"restart\", \"logs\", \"inspect\", \"cleanup\"]}, \"iana-postgres\": {\"endpoint\": \"postgres\", \"actions\": [\"query\", \"backup\", \"restore\", \"vacuum\", \"analyze\", \"status\"]}, \"iana-backup\": {\"endpoint\": \"backup\", \"actions\": [\"create\", \"list\", \"restore\", \"delete\", \"schedule\"]}, \"iana-security\": {\"endpoint\": \"security\", \"actions\": [\"audit\", \"scan\", \"report\", \"alert\"]}, \"iana-redis\": {\"endpoint\": \"redis\", \"actions\": [\"get\", \"set\", \"delete\", \"list\", \"flush\", \"info\", \"status\"]}, \"iana-monitoring\": {\"endpoint\": \"monitoring\", \"actions\": [\"query\", \"alert\", \"dashboard\", \"status\"]}};\n\nconst testCases = [];\nfor (const [workflowName, config] of Object.entries(workflowsConfig)) {\n  for (const actionName of config.actions) {\n    testCases.push({\n      workflow_name: workflowName,\n      action_name: actionName,\n      endpoint: config.endpoint,\n      webhook_url: `http://localhost:5678/webhook/${config.endpoint}`,\n      test_data: {\n        action: actionName,\n        data: {},\n        user_id: user_id,\n        channel: 'test'\n      }\n    });\n  }\n}\n\nreturn testCases.map(tc => ({\n  json: {\n    success: true,\n    action: 'all',\n    ...tc,\n    user_id: user_id\n  }\n}));"
+      },
+      "id": "action-all",
+      "name": "Prepare All Tests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.webhook_url }}",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParametersJson": "={{ JSON.stringify($json.test_data) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "http-test-all",
+      "name": "Test All HTTP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Action: report - Générer rapport de tests\nconst input = $input.first().json;\nconst { data, user_id } = input;\n\n// Récupérer les résultats de tests depuis la base de données\n// Note: Cette action devrait interroger iana.operation_logs pour générer un rapport\n// Pour l'instant, retourner un message indiquant que le rapport doit être généré\n\nreturn [{\n  json: {\n    success: true,\n    action: 'report',\n    message: 'Report generation - query iana.operation_logs for test results',\n    filters: {\n      workflow_id: 'iana-test',\n      user_id: user_id,\n      date_from: data.date_from || null,\n      date_to: data.date_to || null\n    },\n    user_id: user_id\n  }\n}];"
+      },
+      "id": "action-report",
+      "name": "Prepare Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        910,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  workflow_id,\n  action,\n  COUNT(*) as total_tests,\n  COUNT(*) FILTER (WHERE success = true) as passed,\n  COUNT(*) FILTER (WHERE success = false) as failed,\n  AVG(latency_ms) as avg_latency_ms,\n  MIN(created_at) as first_test,\n  MAX(created_at) as last_test\nFROM iana.operation_logs\nWHERE workflow_id LIKE 'iana-%'\n  AND user_id = $1\n  AND ($2::timestamp IS NULL OR created_at >= $2)\n  AND ($3::timestamp IS NULL OR created_at <= $3)\nGROUP BY workflow_id, action\nORDER BY workflow_id, action",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.user_id, $json.filters.date_from || null, $json.filters.date_to || null] }}"
+        },
+        "options": {}
+      },
+      "id": "db-get-report",
+      "name": "Get Test Report",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1130,
+        400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll"
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        1350,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Test Result\nconst input = $input.first().json;\nconst validation = $('Validate Input').first().json;\n\n// Si c'est une réponse HTTP, formater comme résultat de test\nif (input.success !== undefined || input.data !== undefined) {\n  return [{\n    json: {\n      test_success: input.success !== false,\n      workflow_name: validation.data.workflow_name || null,\n      action_name: validation.data.action_name || null,\n      response: input,\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\n// Sinon, retourner tel quel\nreturn [{\n  json: {\n    ...input,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "format-test-result",
+      "name": "Format Test Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1570,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT iana.log_operation($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) as log_id",
+        "additionalFields": {
+          "queryParameters": "={{ ['iana-test', $('Validate Input').first().json.action, $('Validate Input').first().json.user_id, 'api', JSON.stringify($('Validate Input').first().json.data || {}), JSON.stringify($json), $json.test_success !== false, $json.errorCode || null, $json.errorMessage || null, Date.now() - ($('Validate Input').first().json._meta?.startTime || Date.now()), $('Validate Input').first().json._meta?.requestId || null] }}"
+        },
+        "options": {}
+      },
+      "id": "log-operation",
+      "name": "Log Operation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        1790,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Response Standardisée\nconst input = $input.first().json;\nconst validation = $('Validate Input').first().json;\nconst startTime = validation._meta?.startTime || Date.now();\n\n// Success case\nif (input.test_success !== false && !input.isError) {\n  return [{\n    json: {\n      success: true,\n      action: validation.action,\n      data: input,\n      error: null,\n      meta: {\n        latency_ms: Date.now() - startTime,\n        timestamp: new Date().toISOString(),\n        request_id: validation._meta?.requestId\n      }\n    }\n  }];\n}\n\n// Error case\nreturn [{\n  json: {\n    success: false,\n    action: validation.action,\n    data: null,\n    error: {\n      code: input.errorCode || 'UNKNOWN_ERROR',\n      message: input.errorMessage || input.message || 'An error occurred'\n    },\n    meta: {\n      latency_ms: Date.now() - startTime,\n      timestamp: new Date().toISOString(),\n      request_id: validation._meta?.requestId\n    }\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2010,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2230,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Test": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Switch Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Action": {
+      "main": [
+        [
+          {
+            "node": "Prepare Workflow Test",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare All Tests",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Workflow Test": {
+      "main": [
+        [
+          {
+            "node": "Test Workflow HTTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Workflow HTTP": {
+      "main": [
+        [
+          {
+            "node": "Format Test Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare All Tests": {
+      "main": [
+        [
+          {
+            "node": "Test All HTTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test All HTTP": {
+      "main": [
+        [
+          {
+            "node": "Format Test Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Report": {
+      "main": [
+        [
+          {
+            "node": "Get Test Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Test Report": {
+      "main": [
+        [
+          {
+            "node": "Format Test Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Test Result": {
+      "main": [
+        [
+          {
+            "node": "Log Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Operation": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "Testing"
+    },
+    {
+      "name": "P1"
+    }
+  ],
+  "active": false
+}

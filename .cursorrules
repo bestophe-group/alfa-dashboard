@@ -123,6 +123,37 @@ Avant d'affirmer :
 | Exploration | REPL + doc findings |
 | Port standard | 5432, 6379, 3000, 8080 |
 
+## 🚨 RÈGLES OBLIGATOIRES
+
+### RAG FIRST
+**TOUJOURS chercher dans le RAG AVANT de demander des informations à l'utilisateur.**
+- Workflow : RAG → Fichiers config → Utilisateur (si rien trouvé)
+- Référence : `.cursor/rules/RAG-FIRST.md`
+
+### VERIFY FIRST
+**TOUJOURS tester/verifier AVANT de proposer une solution.**
+- Scripts SQL : Tester avant de proposer
+- Tokens API : Tester avant d'utiliser
+- Solutions : Tester avant de recommander
+- Référence : `.cursor/rules/VERIFY-FIRST.md`
+
+### STATE FIRST
+**TOUJOURS vérifier l'état réel AVANT de conclure.**
+- Diagnostics : Vérifier dans source de vérité (DB, logs)
+- Conclusions : Fournir preuves (requêtes SQL, tests)
+- Référence : `.cursor/rules/STATE-FIRST.md`
+
+### ALTERNATIVES FIRST
+**TOUJOURS chercher toutes les alternatives AVANT de conclure qu'une solution est obligatoire.**
+- Solutions : Chercher toutes les alternatives
+- Documentation : Chercher dans doc officielle, forums, code
+- Référence : `.cursor/rules/ALTERNATIVES-FIRST.md`
+
+### WORKFLOW ALFA STRICT
+**TOUJOURS suivre le workflow ALFA : INTAKE → AUDIT → PLAN → BUILD → PROVE**
+- Aucune phase ne peut être sautée
+- Référence : `.cursor/rules/WORKFLOW-ALFA-STRICT.md`
+
 ## FIN SESSION
 
 Toujours terminer par :

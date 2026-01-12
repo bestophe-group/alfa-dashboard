@@ -50,3 +50,4 @@ secrets/
 backups/
 *.sql
 *.dump
+.env.mcp

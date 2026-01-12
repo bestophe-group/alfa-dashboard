@@ -1,0 +1,72 @@
+{
+  "name": "iana-expert-l3",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Parse expert L3 request\nconst input = $input.first().json.data || $input.first().json;\n\nif (!input.query) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'query is required'\n    }\n  }];\n}\n\nif (!input.rag_context || input.rag_count === 0) {\n  return [{\n    json: {\n      success: false,\n      errorCode: 'VALIDATION_ERROR',\n      errorMessage: 'rag_context is required for L3'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    query: input.query,\n    rag_context: input.rag_context,\n    rag_count: input.rag_count,\n    user_id: input.user_id || 'system',\n    channel: input.channel || 'api',\n    conversation_id: input.conversation_id || null\n  }\n}];"
+      },
+      "id": "parse-input",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "iana-l3-handler",
+        "options": {}
+      },
+      "id": "execute-l3",
+      "name": "Execute L3 Handler",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format response\nconst result = $input.first().json;\n\nreturn [{\n  json: {\n    success: true,\n    data: result\n  }\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Execute L3 Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute L3 Handler": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "L3"
+    }
+  ]
+}

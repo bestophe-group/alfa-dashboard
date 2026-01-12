@@ -1,0 +1,594 @@
+{
+  "name": "iana-router",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "iana",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-iana",
+      "name": "Webhook IANA",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "iana-router-main"
+    },
+    {
+      "parameters": {
+        "jsCode": "// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Parse Request:ENTRY',message:'Parse Request entry',data:{hasBody:!!$input.first().json.body,hasDirectJson:!!$input.first().json.query},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});\n// #endregion\n// Parse request\nconst body = $input.first().json.body || $input.first().json;\nconst query = body.query || '';\nconst user_id = body.user_id || 'anon';\nconst channel = body.channel || 'api';\nconst conversation_id = body.conversation_id || null;\n\nif (!query) {\n  // #region agent log\n  fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Parse Request:VALIDATION_ERROR',message:'Query validation failed',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});\n  // #endregion\n  throw new Error('VALIDATION_ERROR: query is required');\n}\n\n// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Parse Request:RETURN',message:'Returning parsed request',data:{query:query.substring(0,50),userId:user_id,channel:channel},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});\n// #endregion\n\nreturn [{\n  json: {\n    query: query,\n    user_id: user_id,\n    channel: channel,\n    conversation_id: conversation_id,\n    _meta: {\n      startTime: Date.now(),\n      requestId: `${user_id}-${Date.now()}`\n    }\n  }\n}];"
+      },
+      "id": "parse-request",
+      "name": "Parse Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO iana.conversations (user_id, channel) VALUES ($1, $2) ON CONFLICT (user_id, channel) DO UPDATE SET updated_at = NOW() RETURNING conversation_id",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.user_id, $json.channel] }}"
+        },
+        "options": {}
+      },
+      "id": "get-conversation",
+      "name": "Get Conversation",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [680, 300],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare CLI command for classification\nconst parseData = $('Parse Request').first().json;\nconst query = parseData.query || '';\n\nconst prompt = `Classify this query into L1 (simple chat), L2 (workflow action), or L3 (expert analysis).\\n\\nQuery: ${query}\\n\\nRespond ONLY with valid JSON: {\\\"tier\\\":\\\"L1\\\"|\\\"L2\\\"|\\\"L3\\\",\\\"confidence\\\":0.0-1.0,\\\"reason\\\":\\\"brief explanation\\\"}`;\n\n// Escape prompt for shell\nconst escapedPrompt = prompt.replace(/\"/g, '\\\\\"').replace(/\\$/g, '\\\\$');\n\nreturn [{\n  json: {\n    command: `node /home/node/scripts/llm-cli-wrapper.js claude-code \"${escapedPrompt}\" claude-3-haiku`,\n    prompt: prompt,\n    query: query\n  }\n}];"
+      },
+      "id": "prepare-classifier",
+      "name": "Prepare Classifier Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Classifier L1/L2/L3 (CLI):ENTRY',message:'Classifier entry',data:{command:($input.first().json.command || '').substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});\n// #endregion\n// Execute CLI wrapper via child_process\nconst { execSync } = require('child_process');\nconst command = $input.first().json.command || '';\n\n// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Classifier L1/L2/L3 (CLI):BEFORE_EXEC',message:'Before execSync',data:{commandLength:command.length,hasChildProcess:typeof require !== 'undefined' && typeof require('child_process') !== 'undefined'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});\n// #endregion\n\ntry {\n  const result = execSync(command, {\n    encoding: 'utf8',\n    maxBuffer: 10 * 1024 * 1024,\n    timeout: 30000\n  });\n  \n  // #region agent log\n  fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Classifier L1/L2/L3 (CLI):AFTER_EXEC',message:'After execSync success',data:{resultLength:result.length,resultPreview:result.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});\n  // #endregion\n  \n  // Parse JSON response\n  let cliResponse;\n  try {\n    cliResponse = JSON.parse(result.trim());\n    // #region agent log\n    fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Classifier L1/L2/L3 (CLI):PARSE_SUCCESS',message:'JSON parse success',data:{hasResponse:!!cliResponse.response,keys:Object.keys(cliResponse)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});\n    // #endregion\n  } catch (e) {\n    cliResponse = { response: result.trim(), error: 'JSON parse failed' };\n    // #region agent log\n    fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Classifier L1/L2/L3 (CLI):PARSE_FAIL',message:'JSON parse failed',data:{error:e.message,resultPreview:result.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});\n    // #endregion\n  }\n  \n  // #region agent log\n  fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Classifier L1/L2/L3 (CLI):RETURN',message:'Returning result',data:{hasStdout:!!cliResponse.stdout,hasResponse:!!cliResponse.response,hasError:!!cliResponse.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});\n  // #endregion\n  \n  return [{\n    json: {\n      stdout: result.trim(),\n      stderr: '',\n      ...cliResponse\n    }\n  }];\n} catch (error) {\n  // #region agent log\n  fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Classifier L1/L2/L3 (CLI):ERROR',message:'execSync error',data:{errorMessage:error.message,errorStack:error.stack?.substring(0,300)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});\n  // #endregion\n  \n  return [{\n    json: {\n      stdout: '',\n      stderr: error.message,\n      error: error.message\n    }\n  }];\n}"
+      },
+      "id": "classifier",
+      "name": "Classifier L1/L2/L3 (CLI)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Parse Classification:ENTRY',message:'Parse Classification entry',data:{hasStdout:!!$input.first().json.stdout,hasStderr:!!$input.first().json.stderr,hasError:!!$input.first().json.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});\n// #endregion\n// Parse classification from CLI response\nconst cliOutput = $input.first().json.stdout || $input.first().json.stderr || '{}';\n// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Parse Classification:CLI_OUTPUT',message:'CLI output received',data:{cliOutputLength:cliOutput.length,cliOutputPreview:cliOutput.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});\n// #endregion\nlet cliResponse;\n\ntry {\n  cliResponse = JSON.parse(cliOutput.trim());\n  // #region agent log\n  fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Parse Classification:FIRST_PARSE',message:'First JSON parse success',data:{keys:Object.keys(cliResponse)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});\n  // #endregion\n} catch (e) {\n  // Si ce n'est pas du JSON, essayer d'extraire\n  cliResponse = { response: cliOutput };\n  // #region agent log\n  fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Parse Classification:FIRST_PARSE_FAIL',message:'First JSON parse failed',data:{error:e.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});\n  // #endregion\n}\n\nconst response = cliResponse.response || cliResponse.text || cliOutput;\n// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Parse Classification:RESPONSE_EXTRACTED',message:'Response extracted',data:{responseLength:response.length,responsePreview:response.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});\n// #endregion\nlet classification;\n\ntry {\n  // Try to parse JSON from response\n  const jsonMatch = response.match(/\\{[^}]+\\}/);\n  if (jsonMatch) {\n    classification = JSON.parse(jsonMatch[0]);\n    // #region agent log\n    fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Parse Classification:CLASSIFICATION_SUCCESS',message:'Classification parsed from regex',data:{tier:classification.tier,confidence:classification.confidence},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});\n    // #endregion\n  } else {\n    classification = JSON.parse(response);\n    // #region agent log\n    fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Parse Classification:CLASSIFICATION_SUCCESS_DIRECT',message:'Classification parsed directly',data:{tier:classification.tier,confidence:classification.confidence},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});\n    // #endregion\n  }\n} catch (e) {\n  // Fallback: try to extract tier from text\n  const tierMatch = response.match(/L[123]/);\n  classification = {\n    tier: tierMatch ? tierMatch[0] : 'L1',\n    confidence: 0.5,\n    reason: 'Fallback classification'\n  };\n  // #region agent log\n  fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Parse Classification:FALLBACK',message:'Using fallback classification',data:{tier:classification.tier,parseError:e.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});\n  // #endregion\n}\n\nconst parseData = $('Parse Request').first().json;\n\n// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Parse Classification:RETURN',message:'Returning classification',data:{tier:classification.tier,confidence:classification.confidence,hasConversationId:!!$('Get Conversation').first().json.conversation_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});\n// #endregion\n\nreturn [{\n  json: {\n    tier: classification.tier || 'L1',\n    confidence: classification.confidence || 0.5,\n    reason: classification.reason || '',\n    query: parseData.query,\n    user_id: parseData.user_id,\n    channel: parseData.channel,\n    conversation_id: $('Get Conversation').first().json.conversation_id,\n    _meta: parseData._meta\n  }\n}];"
+      },
+      "id": "parse-classification",
+      "name": "Parse Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.tier }}",
+              "operation": "equals",
+              "value2": "L1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-tier",
+      "name": "Check Tier",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM rag.search_fulltext($1, 5) LIMIT 5",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.query] }}"
+        },
+        "options": {}
+      },
+      "id": "rag-query",
+      "name": "RAG Query",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1560, 400],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format RAG context for LLM\nconst ragResults = $input.all();\nconst classification = $('Parse Classification').first().json;\n\nlet context = '';\nif (ragResults.length > 0) {\n  context = '\\n\\n=== CONTEXTE RAG ===\\n';\n  ragResults.forEach((r, idx) => {\n    const content = r.json.content || r.json.chunk_content || '';\n    const title = r.json.document_title || r.json.title || 'Document';\n    context += `\\n[${idx + 1}] ${title}:\\n${content.substring(0, 500)}${content.length > 500 ? '...' : ''}\\n`;\n  });\n  context += '\\n=== FIN CONTEXTE ===\\n\\n';\n}\n\nreturn [{\n  json: {\n    tier: classification.tier,\n    confidence: classification.confidence,\n    query: classification.query,\n    rag_context: context,\n    rag_count: ragResults.length,\n    user_id: classification.user_id,\n    channel: classification.channel,\n    conversation_id: classification.conversation_id,\n    _meta: classification._meta\n  }\n}];"
+      },
+      "id": "format-rag-context",
+      "name": "Format RAG Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.tier }}",
+              "operation": "equals",
+              "value2": "L2"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "route-l2-l3",
+      "name": "Route L2/L3",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [2000, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare L1 CLI command\nconst parseData = $('Parse Request').first().json;\nconst query = parseData.query || '';\n\nconst prompt = `${query}\\n\\nRespond helpfully and concisely.`;\nconst escapedPrompt = prompt.replace(/\"/g, '\\\\\"').replace(/\\$/g, '\\\\$');\n\nreturn [{\n  json: {\n    command: `node /home/node/scripts/llm-cli-wrapper.js claude-code \"${escapedPrompt}\" claude-3-haiku`,\n    prompt: prompt,\n    query: query\n  }\n}];"
+      },
+      "id": "prepare-l1",
+      "name": "Prepare L1 Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute CLI wrapper via child_process\nconst { execSync } = require('child_process');\nconst command = $input.first().json.command || '';\n\ntry {\n  const result = execSync(command, {\n    encoding: 'utf8',\n    maxBuffer: 10 * 1024 * 1024,\n    timeout: 30000\n  });\n  \n  // Parse JSON response\n  let cliResponse;\n  try {\n    cliResponse = JSON.parse(result.trim());\n  } catch (e) {\n    cliResponse = { response: result.trim(), error: 'JSON parse failed' };\n  }\n  \n  return [{\n    json: {\n      stdout: result.trim(),\n      stderr: '',\n      ...cliResponse\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      stdout: '',\n      stderr: error.message,\n      error: error.message\n    }\n  }];\n}"
+      },
+      "id": "l1-handler",
+      "name": "L1 Handler (CLI)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare L2 CLI command (workflow action)\nconst parseData = $('Parse Request').first().json;\nconst query = parseData.query || '';\n\nconst prompt = `You are an AI assistant that can execute workflow actions. Analyze this query and determine what action to take.\\n\\nQuery: ${query}\\n\\nRespond with a JSON object: {\\\"action\\\":\\\"action_name\\\",\\\"params\\\":{...},\\\"response\\\":\\\"explanation\\\"}`;\nconst escapedPrompt = prompt.replace(/\"/g, '\\\\\"').replace(/\\$/g, '\\\\$');\n\nreturn [{\n  json: {\n    command: `node /home/node/scripts/llm-cli-wrapper.js claude-code \"${escapedPrompt}\" claude-3-haiku`,\n    prompt: prompt,\n    query: query\n  }\n}];"
+      },
+      "id": "prepare-l2",
+      "name": "Prepare L2 Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute CLI wrapper via child_process\nconst { execSync } = require('child_process');\nconst command = $input.first().json.command || '';\n\ntry {\n  const result = execSync(command, {\n    encoding: 'utf8',\n    maxBuffer: 10 * 1024 * 1024,\n    timeout: 30000\n  });\n  \n  // Parse JSON response\n  let cliResponse;\n  try {\n    cliResponse = JSON.parse(result.trim());\n  } catch (e) {\n    cliResponse = { response: result.trim(), error: 'JSON parse failed' };\n  }\n  \n  return [{\n    json: {\n      stdout: result.trim(),\n      stderr: '',\n      ...cliResponse\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      stdout: '',\n      stderr: error.message,\n      error: error.message\n    }\n  }];\n}"
+      },
+      "id": "l2-handler",
+      "name": "L2 Handler (CLI)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare L3 CLI command\nconst ragContext = $('Format RAG Context').first().json || {};\nconst parseData = $('Parse Request').first().json;\nconst query = parseData.query || '';\nconst ragText = ragContext.rag_context || '';\n\nconst prompt = `${ragText}You are an expert AI assistant. Analyze this query deeply and provide a comprehensive response.\\n\\nQuery: ${query}\\n\\nUse the RAG context above to inform your response. Be thorough and detailed.`;\nconst escapedPrompt = prompt.replace(/\"/g, '\\\\\"').replace(/\\$/g, '\\\\$');\n\nreturn [{\n  json: {\n    command: `node /home/node/scripts/llm-cli-wrapper.js cursor-agent \"${escapedPrompt}\" claude-3-5-sonnet`,\n    prompt: prompt,\n    query: query,\n    rag_context: ragText\n  }\n}];"
+      },
+      "id": "prepare-l3",
+      "name": "Prepare L3 Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute CLI wrapper via child_process\nconst { execSync } = require('child_process');\nconst command = $input.first().json.command || '';\n\ntry {\n  const result = execSync(command, {\n    encoding: 'utf8',\n    maxBuffer: 10 * 1024 * 1024,\n    timeout: 60000\n  });\n  \n  // Parse JSON response\n  let cliResponse;\n  try {\n    cliResponse = JSON.parse(result.trim());\n  } catch (e) {\n    cliResponse = { response: result.trim(), error: 'JSON parse failed' };\n  }\n  \n  return [{\n    json: {\n      stdout: result.trim(),\n      stderr: '',\n      ...cliResponse\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      stdout: '',\n      stderr: error.message,\n      error: error.message\n    }\n  }];\n}"
+      },
+      "id": "l3-handler",
+      "name": "L3 Handler (CLI)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Merge Handlers:ENTRY',message:'Merge Handlers entry',data:{hasInput:!!$input.first().json},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});\n// #endregion\n// Merge all handler results (from CLI)\nconst input = $input.first().json;\nconst classification = $('Parse Classification').first().json;\nconst ragContext = $('Format RAG Context').first().json || {};\n\n// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Merge Handlers:DATA',message:'Data available',data:{hasClassification:!!classification,hasRagContext:!!ragContext,hasInputStdout:!!input.stdout,hasInputStderr:!!input.stderr},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});\n// #endregion\n\n// Extract response from CLI output (stdout contains JSON)\nlet cliResponse;\ntry {\n  const cliOutput = input.stdout || input.stderr || '{}';\n  cliResponse = JSON.parse(cliOutput.trim());\n  // #region agent log\n  fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Merge Handlers:PARSE_SUCCESS',message:'CLI response parsed',data:{hasResponse:!!cliResponse.response,hasText:!!cliResponse.text,keys:Object.keys(cliResponse)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});\n  // #endregion\n} catch (e) {\n  cliResponse = { response: input.stdout || input.stderr || 'No response' };\n  // #region agent log\n  fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Merge Handlers:PARSE_FAIL',message:'CLI response parse failed',data:{error:e.message,fallbackResponse:cliResponse.response?.substring(0,100)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});\n  // #endregion\n}\n\nlet response = '';\nlet tier = classification.tier;\n\nif (cliResponse.response) {\n  response = cliResponse.response;\n  // #region agent log\n  fetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Merge Handlers:RESPONSE_SOURCE',message:'Response from cliResponse.response',data:{responseLength:response.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});\n  // #endregion\n} else if (cliResponse.text) {\n  response = cliResponse.text;\n} else if (input.response) {\n  response = input.response;\n} else if (input.text) {\n  response = input.text;\n} else if (typeof input === 'string') {\n  response = input;\n} else {\n  response = JSON.stringify(input);\n}\n\n// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Merge Handlers:RETURN',message:'Returning merged result',data:{tier:tier,responseLength:response.length,hasConversationId:!!classification.conversation_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});\n// #endregion\n\nreturn [{\n  json: {\n    tier: tier,\n    response: response,\n    confidence: classification.confidence,\n    rag_count: ragContext.rag_count || 0,\n    query: classification.query,\n    user_id: classification.user_id,\n    channel: classification.channel,\n    conversation_id: classification.conversation_id,\n    _meta: classification._meta\n  }\n}];"
+      },
+      "id": "merge-handlers",
+      "name": "Merge Handlers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO iana.messages (conversation_id, role, content, tier) VALUES ($1, 'user', $2, NULL) RETURNING message_id",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.conversation_id, $json.query] }}"
+        },
+        "options": {}
+      },
+      "id": "log-user-message",
+      "name": "Log User Message",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2660, 400],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO iana.messages (conversation_id, role, content, tier, metadata) VALUES ($1, 'assistant', $2, $3, $4::jsonb) RETURNING message_id",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.conversation_id, $json.response, $json.tier, JSON.stringify({confidence: $json.confidence, rag_count: $json.rag_count})] }}"
+        },
+        "options": {}
+      },
+      "id": "log-assistant-message",
+      "name": "Log Assistant Message",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2880, 400],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare router log data\nconst assistantMsg = $('Log Assistant Message').first().json;\nconst handlerResult = $('Merge Handlers').first().json;\nconst classification = $('Parse Classification').first().json;\nconst startTime = classification._meta?.startTime || Date.now();\n\nreturn [{\n  json: {\n    message_id: assistantMsg.message_id,\n    query: handlerResult.query,\n    predicted_tier: classification.tier,\n    confidence: classification.confidence,\n    actual_tier: handlerResult.tier,\n    is_correct: true,\n    latency_ms: Date.now() - startTime,\n    metadata: JSON.stringify({\n      request_id: classification._meta?.requestId,\n      rag_count: handlerResult.rag_count || 0\n    })\n  }\n}];"
+      },
+      "id": "prepare-router-log",
+      "name": "Prepare Router Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3100, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO iana.router_logs (message_id, query, predicted_tier, confidence, actual_tier, is_correct, latency_ms, metadata) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)",
+        "additionalFields": {
+          "queryParameters": "={{ [$json.message_id, $json.query, $json.predicted_tier, $json.confidence, $json.actual_tier, $json.is_correct, $json.latency_ms, $json.metadata] }}"
+        },
+        "options": {}
+      },
+      "id": "log-router-decision",
+      "name": "Log Router Decision",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [3320, 400],
+      "credentials": {
+        "postgres": {
+          "id": "5zFMgYDljFx593WZ",
+          "name": "PostgreSQL IANA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Format Response:ENTRY',message:'Format Response entry',data:{hasHandlerResult:!!$('Merge Handlers').first().json,hasClassification:!!$('Parse Classification').first().json},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});\n// #endregion\n// Format final response\nconst handlerResult = $('Merge Handlers').first().json;\nconst classification = $('Parse Classification').first().json;\nconst startTime = classification._meta?.startTime || Date.now();\n\n// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Format Response:DATA',message:'Response data prepared',data:{tier:handlerResult.tier,responseLength:handlerResult.response?.length || 0,hasResponse:!!handlerResult.response,conversationId:handlerResult.conversation_id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});\n// #endregion\n\nconst finalResponse = {\n  success: true,\n  tier: handlerResult.tier,\n  response: handlerResult.response,\n  confidence: handlerResult.confidence,\n  rag_context_used: (handlerResult.rag_count || 0) > 0,\n  rag_count: handlerResult.rag_count || 0,\n  meta: {\n    latency_ms: Date.now() - startTime,\n    timestamp: new Date().toISOString(),\n    request_id: classification._meta?.requestId,\n    conversation_id: handlerResult.conversation_id\n  }\n};\n\n// #region agent log\nfetch('http://127.0.0.1:7244/ingest/a56227c4-3817-4fc4-8bc4-88b2e0aa21d7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Format Response:RETURN',message:'Returning final response',data:{success:finalResponse.success,responseLength:finalResponse.response?.length || 0,hasResponse:!!finalResponse.response,latencyMs:finalResponse.meta.latency_ms},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});\n// #endregion\n\nreturn [{\n  json: finalResponse\n}];"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3540, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [3760, 400]
+    }
+  ],
+  "connections": {
+    "Webhook IANA": {
+      "main": [
+        [
+          {
+            "node": "Parse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Request": {
+      "main": [
+        [
+          {
+            "node": "Get Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Conversation": {
+      "main": [
+        [
+          {
+            "node": "Prepare Classifier Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Classifier Command": {
+      "main": [
+        [
+          {
+            "node": "Classifier L1/L2/L3 (CLI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classifier L1/L2/L3 (CLI)": {
+      "main": [
+        [
+          {
+            "node": "Parse Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Classification": {
+      "main": [
+        [
+          {
+            "node": "Check Tier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Tier": {
+      "main": [
+        [
+          {
+            "node": "Prepare L1 Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RAG Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RAG Query": {
+      "main": [
+        [
+          {
+            "node": "Format RAG Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format RAG Context": {
+      "main": [
+        [
+          {
+            "node": "Route L2/L3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route L2/L3": {
+      "main": [
+        [
+          {
+            "node": "Prepare L2 Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare L3 Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare L2 Command": {
+      "main": [
+        [
+          {
+            "node": "L2 Handler (CLI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare L3 Command": {
+      "main": [
+        [
+          {
+            "node": "L3 Handler (CLI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "L3 Handler (CLI)": {
+      "main": [
+        [
+          {
+            "node": "Merge Handlers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare L1 Command": {
+      "main": [
+        [
+          {
+            "node": "L1 Handler (CLI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "L1 Handler (CLI)": {
+      "main": [
+        [
+          {
+            "node": "Merge Handlers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "L2 Handler (CLI)": {
+      "main": [
+        [
+          {
+            "node": "Merge Handlers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "L3 Handler (CLI)": {
+      "main": [
+        [
+          {
+            "node": "Merge Handlers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Handlers": {
+      "main": [
+        [
+          {
+            "node": "Log User Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log User Message": {
+      "main": [
+        [
+          {
+            "node": "Log Assistant Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Assistant Message": {
+      "main": [
+        [
+          {
+            "node": "Prepare Router Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Router Log": {
+      "main": [
+        [
+          {
+            "node": "Log Router Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Router Decision": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": [
+    {
+      "name": "IANA"
+    },
+    {
+      "name": "P0"
+    }
+  ]
+}
