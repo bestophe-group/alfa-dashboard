@@ -63,6 +63,8 @@ services:
     build: ./postgres
     container_name: alfa-postgres
     restart: always
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-alfa}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alfapass123}

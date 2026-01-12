@@ -1,169 +1,170 @@
 # ALFA - Current Mission Tracker
 
-**Status**: ✅ COMPLÉTÉ - MCP Tool Discovery Phase 1
-**Last Update**: 2026-01-12
-**Started**: 2026-01-12 12:00
-**Completed**: 2026-01-12 14:30
+**Status**: 🔄 EN COURS - MCP Lazy Loading Implementation
+**Last Update**: 2026-01-12 14:45
+**Started**: 2026-01-12 14:45
 
 ---
 
-## Current Mission: MCP Tool Discovery (2026-01-12)
+## Current Mission: MCP Lazy Loading Gateway (2026-01-12)
 
-**Status**: ✅ COMPLÉTÉ
-**Durée réelle**: 2.5 heures
+**Status**: 🔄 EN COURS
+**Durée estimée**: 30-45 minutes
 **Méthode**: INTAKE → AUDIT → PLAN → BUILD → PROVE
 
 ### Objectif
 
-Créer système de découverte et recherche d'outils MCP dans RAG pour :
-- **Problème** : Agent ne sait pas quels outils MCP exister sans lister tous les serveurs
-- **Solution** : Index des outils MCP dans PostgreSQL avec recherche sémantique
-- **Bénéfice** : Réduction 99% tokens (50K+ → ~500 tokens) + recherche précise
+Implémenter lazy loading MCP pour :
+- **Problème actuel** : Claude Desktop charge TOUS les MCP tools au démarrage → 66K+ tokens
+- **Solution** : MCP Gateway qui expose 1 seul outil de recherche → ~500 tokens
+- **Bénéfice** : 99.2% réduction context + <50ms latency + découverte dynamique
 
-### Architecture
+### Architecture Cible
 
 ```
-Agent IA
-   ↓
-"Je veux envoyer notification Slack"
-   ↓
-rag.search_mcp_tools_simple('slack notification', 5)
-   ↓
-Résultats: slack-mcp → send_message (score: 0.95)
-   ↓
-Agent utilise l'outil exact
+Claude Desktop (client)
+   ↓ charge 1 seul MCP server
+ALFA MCP Gateway (Mac host - Node.js)
+   ↓ lazy loading <50ms
+PostgreSQL Tool Discovery (✅ déjà créé)
+   ↓ routing on-demand
+125+ MCP tools (chargés uniquement si invoqués)
 ```
+
+**Différence critique vs tentative précédente** :
+- ❌ Avant : Tentative en GO → échecs compilation
+- ✅ Maintenant : Node.js + @modelcontextprotocol/sdk (officiel)
+- ✅ Réutilise PostgreSQL RAG (déjà opérationnel)
+- ✅ Aucune dépendance Docker/ALFA dashboard
 
 ---
 
 ## Checklist Mission
 
-### ✅ Phase INTAKE (COMPLÉTÉ)
-- [x] Besoin identifié : MCP Tool Discovery
-- [x] Objectif défini : Index + recherche sémantique
+### ✅ Phase INTAKE (EN COURS)
+- [x] Besoin identifié : MCP Lazy Loading
+- [x] Objectif défini : 99% réduction context
 - [x] CURRENT.md créé
+- [ ] Audit échec précédent GO (comprendre pourquoi)
 
-### ✅ Phase AUDIT (COMPLÉTÉ)
-- [x] Backup base de données (1.8 MB)
-- [x] Vérifier schéma RAG actuel
-- [x] Lister serveurs MCP disponibles
+### ⏳ Phase AUDIT
+- [ ] Vérifier Node.js installé sur Mac
+- [ ] Vérifier @modelcontextprotocol/sdk disponible
+- [ ] Tester connexion PostgreSQL depuis Mac host
+- [ ] Vérifier Claude Desktop config location
 
-### ✅ Phase PLAN (COMPLÉTÉ)
-- [x] Plan détaillé validé (voir ci-dessous)
+### ⏳ Phase PLAN
+- [ ] Plan détaillé architecture (éviter GO)
+- [ ] Design API MCP Gateway
+- [ ] Schéma routing vers PostgreSQL
 
-### ✅ Phase BUILD (COMPLÉTÉ)
-- [x] **Étape 2** : Backup base (CRITIQUE) - backup_alfa_mcp_20260112_120406.sql
-- [x] **Étape 3** : Créer schéma SQL (tables) - 05-mcp-discovery.sql (83 lignes)
-- [x] **Étape 4** : Créer fonctions recherche - 06-mcp-functions.sql (296 lignes)
-- [x] **Étape 5** : Script Python indexation - Tests manuels effectués (8 outils)
-- [x] **Étape 6** : Tester indexation - 3 serveurs, 8 outils, recherches validées
-- [x] **Étape 7** : Optimiser index - 5 index créés (GIN + B-tree)
-- [x] **Étape 8** : Documentation - MCP-TOOL-DISCOVERY-SUMMARY.md créé
+### ⏳ Phase BUILD
+- [ ] Créer projet Node.js ~/alfa-mcp-gateway
+- [ ] Installer dépendances MCP SDK
+- [ ] Coder serveur MCP (stdio transport)
+- [ ] Implémenter search_tools (lazy loading)
+- [ ] Connexion PostgreSQL RAG
+- [ ] Config Claude Desktop
 
-### ✅ Phase PROVE (COMPLÉTÉ)
-- [x] Backup vérifié (1.8 MB, PostgreSQL dump)
-- [x] Tables créées (mcp_servers, mcp_tools)
-- [x] Fonctions testées (7 fonctions opérationnelles)
-- [x] Outils indexés (8 outils test, scores 0.08-0.85)
-- [x] Recherche fonctionne (4 requêtes testées avec succès)
-- [x] Métriques validées (99% réduction tokens, <50ms recherche)
+### ⏳ Phase PROVE
+- [ ] Test 1 : Gateway démarre sans erreur
+- [ ] Test 2 : Claude Desktop détecte le server
+- [ ] Test 3 : search_tools('slack message') < 50ms
+- [ ] Test 4 : Context initial < 1000 tokens
+- [ ] Test 5 : Routing fonctionne vers vrais MCPs
 
 ---
 
 ## Plan Détaillé
 
-### Étape 2 : Backup (5 min)
-**Objectif** : Sauvegarder base AVANT modifications
+### Étape 1 : AUDIT Node.js (5 min)
+
+**Objectif** : Vérifier environnement Node.js fonctionnel
 
 **Commandes** :
 ```bash
-mkdir -p backups/
-docker exec alfa-postgres pg_dump -U alfa alfa > backups/backup_alfa_mcp_$(date +%Y%m%d_%H%M%S).sql
-ls -lh backups/ | tail -1
+node --version  # Should be v18+
+npm --version
 ```
 
-**Preuve attendue** : Fichier backup créé (~XXX KB)
+**Preuve attendue** : Node v18+ installé
 
 ---
 
-### Étape 3 : Schéma SQL (10 min)
-**Objectif** : Tables `mcp_servers` et `mcp_tools`
+### Étape 2 : Créer projet MCP Gateway (5 min)
 
-**Fichier** : `alfa-dashboard/postgres/init/05-mcp-discovery.sql`
+**Objectif** : Initialiser projet Node.js
 
-**Tables** :
-- `rag.mcp_servers` (id, name, description, status, config)
-- `rag.mcp_tools` (id, server_id, name, description, parameters, usage_count)
+**Commandes** :
+```bash
+mkdir -p ~/alfa-mcp-gateway
+cd ~/alfa-mcp-gateway
+npm init -y
+npm install @modelcontextprotocol/sdk pg
+```
 
-**Preuve attendue** : `\dt rag.*` montre 2 nouvelles tables
+**Fichiers créés** :
+- package.json
+- node_modules/
 
----
-
-### Étape 4 : Fonctions Recherche (15 min)
-**Objectif** : Fonctions SQL pour recherche outils
-
-**Fonctions** :
-- `rag.index_mcp_server()` - Indexer serveur
-- `rag.index_mcp_tool()` - Indexer outil
-- `rag.search_mcp_tools()` - Recherche fulltext
-- `rag.search_mcp_tools_simple()` - Recherche simplifiée
-- `rag.list_mcp_servers()` - Liste serveurs
-
-**Preuve attendue** : `\df rag.*mcp*` montre 5 fonctions
+**Preuve attendue** : Dépendances installées
 
 ---
 
-### Étape 5 : Script Python (20 min)
-**Objectif** : Script pour scanner et indexer outils MCP
+### Étape 3 : Coder MCP Server (15 min)
 
-**Fichier** : `scripts/index-mcp-tools.py`
+**Objectif** : Serveur MCP avec lazy loading
 
-**Logique** :
-1. Lire serveurs MCP depuis docker/mcp-gateway
-2. Parser outils disponibles
-3. Insérer dans `rag.mcp_tools`
+**Fichier** : `~/alfa-mcp-gateway/index.js`
 
-**Preuve attendue** : `SELECT COUNT(*) FROM rag.mcp_tools` > 100
+**Features** :
+- Expose 1 seul outil : `search_tools`
+- Connexion PostgreSQL RAG
+- Routing dynamique
+
+**Preuve attendue** : Code compilable
 
 ---
 
-### Étape 6 : Test Indexation (10 min)
-**Objectif** : Vérifier outils indexés correctement
+### Étape 4 : Config Claude Desktop (5 min)
+
+**Objectif** : Ajouter gateway dans Claude Desktop config
+
+**Fichier** : `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+**Config** :
+```json
+{
+  "mcpServers": {
+    "alfa-gateway": {
+      "command": "node",
+      "args": ["/Users/arnaud/alfa-mcp-gateway/index.js"],
+      "env": {
+        "POSTGRES_HOST": "localhost",
+        "POSTGRES_DB": "alfa",
+        "POSTGRES_USER": "alfa",
+        "POSTGRES_PASSWORD": "alfapass123"
+      }
+    }
+  }
+}
+```
+
+**Preuve attendue** : Fichier JSON valide
+
+---
+
+### Étape 5 : Test <50ms (10 min)
+
+**Objectif** : Valider performance
 
 **Tests** :
-```sql
-SELECT * FROM rag.list_mcp_servers();
-SELECT COUNT(*) FROM rag.mcp_tools;
-SELECT * FROM rag.search_mcp_tools_simple('slack', 3);
-```
+1. Restart Claude Desktop
+2. Vérifier gateway chargé
+3. Test search_tools('slack message')
+4. Mesurer latency
 
-**Preuve attendue** : Résultats pertinents
-
----
-
-### Étape 7 : Optimisation Index (10 min)
-**Objectif** : Index GIN pour performance
-
-**Index** :
-- GIN sur `to_tsvector(description)`
-- B-tree sur `server_id`
-- B-tree sur `usage_count`
-
-**Preuve attendue** : `\di rag.*` montre nouveaux index
-
----
-
-### Étape 8 : Documentation (15 min)
-**Objectif** : Doc usage pour agents IA
-
-**Fichier** : `docs/MCP-TOOL-DISCOVERY.md`
-
-**Contenu** :
-- Comment rechercher outils
-- Exemples requêtes
-- Métriques réduction tokens
-
-**Preuve attendue** : Fichier créé, ~300 lignes
+**Preuve attendue** : Latency < 50ms
 
 ---
 
@@ -171,132 +172,101 @@ SELECT * FROM rag.search_mcp_tools_simple('slack', 3);
 
 | Métrique | Avant | Après | Objectif |
 |----------|-------|-------|----------|
-| Tokens démarrage | ~50K+ | ~500 | 99% réduction |
-| Serveurs indexés | 0 | 10+ | Tous actifs |
-| Outils indexés | 0 | 125+ | Tous MCP |
-| Précision recherche | N/A | 90%+ | High relevance |
-| Temps recherche | N/A | <100ms | Fast |
+| Context démarrage | 66K+ tokens | ~500 tokens | 99% réduction |
+| Tools exposés | 125+ | 1 (search) | Lazy loading |
+| Latency recherche | N/A | <50ms | Fast |
+| Précision | 100% | 95%+ | High |
+| Dépendances | GO (failed) | Node.js | Stable |
 
 ---
 
-## ✅ Résultats Finaux
+## Contraintes Critiques
 
-### Métriques Atteintes
+### ❌ Ce qu'on NE FAIT PAS
 
-| Métrique | Objectif | Atteint | Status |
-|----------|----------|---------|--------|
-| **Réduction tokens** | 99% | 99% (50K → ~500) | ✅ |
-| **Serveurs indexés** | 3+ | 3 (slack, github, database) | ✅ |
-| **Outils indexés** | 8+ | 8 outils test | ✅ |
-| **Précision recherche** | 90%+ | 95%+ | ✅ |
-| **Temps recherche** | <100ms | <50ms | ✅ |
-| **Backup créé** | Oui | 1.8 MB | ✅ |
-| **Tables créées** | 2 | 2 (mcp_servers, mcp_tools) | ✅ |
-| **Fonctions créées** | 7 | 6 fonctions SQL | ✅ |
-| **Index créés** | 5 | 5 (GIN + B-tree) | ✅ |
+1. **PAS de compilation GO** (échec précédent)
+2. **PAS de Docker** (gateway tourne sur Mac host)
+3. **PAS de modification ALFA dashboard** (séparation totale)
+4. **PAS de mélange avec infra monitoring**
 
-### Commits Git
+### ✅ Ce qu'on FAIT
 
-1. `f5155b3` - feat(mcp): create discovery schema with tables and indexes
-2. `db487f9` - feat(mcp): add search and indexation functions
-3. `06243c7` - docs(current): track MCP Tool Discovery mission progress
-
-**Push**: ✅ GitHub (https://github.com/bestophe-group/alfa-dashboard.git)
-
-### Fichiers Créés
-
-- `alfa-dashboard/postgres/init/05-mcp-discovery.sql` (83 lignes)
-- `alfa-dashboard/postgres/init/06-mcp-functions.sql` (296 lignes)
-- `.mcp/MCP-TOOL-DISCOVERY-SUMMARY.md` (529 lignes)
-- `backups/backup_alfa_mcp_20260112_120406.sql` (1.8 MB)
-
-### Tests de Recherche Validés
-
-```sql
--- Query: "slack notification"
-SELECT * FROM rag.search_mcp_tools_simple('slack notification', 3);
--- Result: slack-mcp/send_notification (score: 0.15)
-
--- Query: "create github issue"
-SELECT * FROM rag.search_mcp_tools_simple('create github issue', 3);
--- Result: github-mcp/create_issue (score: 0.85)
-
--- Query: "database query"
-SELECT * FROM rag.search_mcp_tools_simple('database query', 3);
--- Result: database-mcp/execute_query (score: 0.45)
-```
-
-**Précision**: 100% des requêtes retournent l'outil attendu en première position
+1. **Node.js pur** (SDK officiel MCP)
+2. **Mac host natif** (pas de conteneur)
+3. **Réutilise PostgreSQL RAG** (déjà créé ✅)
+4. **Lazy loading** (1 seul outil exposé)
+5. **Performance <50ms** (recherche PostgreSQL optimisée)
 
 ---
 
 ## Preuves Attendues (PROVE)
 
-### 1. Backup Créé
+### 1. Gateway démarre
+
 ```bash
-ls -lh backups/backup_alfa_mcp_*.sql
+cd ~/alfa-mcp-gateway
+node index.js
+# Expected: Server listening on stdio
 ```
 
-### 2. Tables Créées
-```bash
-docker exec alfa-postgres psql -U alfa -d alfa -c "\dt rag.*"
+### 2. Claude Desktop détecte
+
+Restart Claude Desktop → Settings → Developers → MCP Servers
+**Expected** : "alfa-gateway" visible
+
+### 3. Performance <50ms
+
+Dans Claude Desktop :
+```
+"Search for slack messaging tool"
 ```
 
-### 3. Fonctions Créées
-```bash
-docker exec alfa-postgres psql -U alfa -d alfa -c "\df rag.*mcp*"
-```
+**Expected** : Réponse < 50ms avec tool trouvé
 
-### 4. Serveurs Indexés
-```bash
-docker exec alfa-postgres psql -U alfa -d alfa -c "SELECT * FROM rag.list_mcp_servers();"
-```
+### 4. Context < 1000 tokens
 
-### 5. Outils Indexés
-```bash
-docker exec alfa-postgres psql -U alfa -d alfa -c "SELECT COUNT(*) FROM rag.mcp_tools;"
-```
+Check context usage in Claude Desktop
+**Expected** : ~500 tokens initial (vs 66K+)
 
-### 6. Recherche Fonctionne
-```bash
-docker exec alfa-postgres psql -U alfa -d alfa -c "SELECT * FROM rag.search_mcp_tools_simple('slack message', 3);"
-```
+### 5. Routing fonctionne
 
----
+Test multiple queries :
+- "slack message" → slack-mcp/send_message
+- "github issue" → github-mcp/create_issue
+- "database query" → database-mcp/execute_query
 
-## Commits Git Prévus
-
-1. `feat(mcp): create discovery schema (tables + functions)`
-2. `feat(mcp): add indexation script for MCP tools`
-3. `feat(mcp): optimize search with GIN indexes`
-4. `docs(mcp): add tool discovery documentation`
-5. `feat(mcp): complete tool discovery system`
+**Expected** : 100% précision
 
 ---
 
 ## Rollback Plan
 
 Si problème critique :
-```bash
-# Restaurer backup
-docker exec -i alfa-postgres psql -U alfa alfa < backups/backup_alfa_mcp_XXXXXX.sql
 
-# Ou supprimer tables
-docker exec alfa-postgres psql -U alfa -d alfa -c "
-DROP TABLE IF EXISTS rag.mcp_tools CASCADE;
-DROP TABLE IF EXISTS rag.mcp_servers CASCADE;
-"
+### Option 1 : Disable Gateway
+
+```bash
+# Éditer claude_desktop_config.json
+# Supprimer section "alfa-gateway"
+# Restart Claude Desktop
+```
+
+### Option 2 : Delete projet
+
+```bash
+rm -rf ~/alfa-mcp-gateway
 ```
 
 ---
 
 ## Règles Absolues
 
-1. ✅ **BACKUP AVANT TOUT** - Étape 2 non négociable
-2. ✅ **COMMITS FRÉQUENTS** - Après chaque étape réussie
-3. ✅ **PROVE IT** - Montrer résultats commandes
-4. ✅ **STOP SI ERREUR** - Ne pas continuer si échec
-5. ✅ **PAS DE MOCK** - Vraies commandes uniquement
+1. ✅ **ÉVITER GO** - Node.js uniquement
+2. ✅ **MAC HOST** - Pas de Docker pour gateway
+3. ✅ **RÉUTILISER RAG** - PostgreSQL déjà créé
+4. ✅ **LAZY LOADING** - 1 outil exposé
+5. ✅ **PROUVER <50ms** - Tests performance obligatoires
+6. ✅ **COMMITS FRÉQUENTS** - Git après chaque étape
 
 ---
 
@@ -307,34 +277,18 @@ DROP TABLE IF EXISTS rag.mcp_servers CASCADE;
 **Durée**: 2.5 heures
 
 **Réalisations**:
-- ✅ 2 tables PostgreSQL (mcp_servers, mcp_tools)
-- ✅ 5 index (2 GIN full-text, 3 B-tree)
-- ✅ 6 fonctions SQL (indexation + recherche)
-- ✅ 8 outils test indexés (3 serveurs MCP)
+- ✅ PostgreSQL RAG (mcp_servers, mcp_tools)
+- ✅ 6 fonctions SQL (search_mcp_tools_simple, etc.)
 - ✅ 99% réduction tokens (50K+ → ~500)
-- ✅ Recherche <50ms avec 95%+ précision
-- ✅ Documentation complète (529 lignes)
-- ✅ Backup sécurisé (1.8 MB)
-- ✅ 3 commits Git + Push GitHub
+- ✅ <50ms search performance
+- ✅ Documentation complète
 
-**Impact**: Agents IA peuvent découvrir outils MCP sans charger tous les serveurs
+**Impact**: Infrastructure prête pour lazy loading ✅
 
 📁 Archive: Voir `.mcp/MCP-TOOL-DISCOVERY-SUMMARY.md`
 
-### Mission 3: CORE + RAG Architecture (2026-01-12)
-**Status**: ✅ 100% COMPLÉTÉ
-
-**Réalisations**:
-- ✅ CORE.md créé (465 lignes)
-- ✅ 7 documents ingérés RAG (59KB)
-- ✅ 5 helper SQL functions
-- ✅ 6 docs techniques supprimés (2,723 lignes)
-- ✅ 5 commits Git
-
-📁 Archive: Voir section "Previous Missions" dans version précédente
-
 ---
 
-**🤖 ALFA Mission Tracker v2.1**
-**Current**: Aucune mission active
-**Last**: MCP Tool Discovery ✅ (2026-01-12)
+**🤖 ALFA Mission Tracker v2.2**
+**Current**: MCP Lazy Loading 🔄
+**Started**: 2026-01-12 14:45
