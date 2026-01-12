@@ -112,7 +112,11 @@ docker compose up -d
 ### Core Infrastructure
 
 - **Traefik** - Reverse proxy with automatic TLS & metrics
-- **PostgreSQL** - Primary database (with Service Desk & Backstage schemas)
+- **PostgreSQL** - Primary database with pgvector extension
+  - Service Desk & Backstage schemas
+  - **RAG Knowledge Base** - Vector embeddings for semantic search
+  - HNSW index for fast similarity search
+  - Full-text search in French
 - **Redis** - Cache and message queue
 
 ### Identity & Security
@@ -153,6 +157,33 @@ docker compose up -d
   - TechDocs documentation
   - Golden Paths templates (Node, React, Python)
   - Software templates for standardized deployments
+
+### RAG Knowledge Base
+
+- **PostgreSQL + pgvector** - Vector database for semantic search
+  - **Documents** - Markdown, PDF, HTML, code files
+  - **Chunks** - Intelligent text splitting with overlap
+  - **Embeddings** - 1536-dimensional vectors (OpenAI compatible)
+  - **Search capabilities**:
+    - **Vector Search** - Semantic similarity using cosine distance
+    - **Fulltext Search** - Keyword matching in French
+    - **Hybrid Search** - Combined vector + fulltext (70/30 weighting)
+  - **Features**:
+    - Deduplication via SHA256 hashing
+    - HNSW index for fast similarity search (m=16, ef_construction=64)
+    - GIN index for French full-text search
+    - JSONB metadata support
+    - Automatic chunking with configurable size and overlap
+
+**Available Functions**:
+- `rag.ingest_document()` - Ingest documents with deduplication
+- `rag.chunk_document()` - Split documents into chunks
+- `rag.store_embedding()` - Store vector embeddings
+- `rag.search_vector()` - Semantic search with similarity threshold
+- `rag.search_fulltext()` - Keyword search with ranking
+- `rag.search_hybrid()` - Combined search for best results
+
+**Documentation**: See [docs/RAG.md](docs/RAG.md) for detailed usage and examples.
 
 ## Workflow Organization
 
