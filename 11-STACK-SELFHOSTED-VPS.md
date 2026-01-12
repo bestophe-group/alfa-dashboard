@@ -134,10 +134,10 @@ services:
       - alfa-network
 
   # ═══════════════════════════════════════════════════════════════
-  # POSTGRES - Base de données
+  # POSTGRES - Base de données + pgvector (RAG)
   # ═══════════════════════════════════════════════════════════════
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16  # PostgreSQL 16 + pgvector extension
     container_name: postgres
     restart: unless-stopped
     environment:
@@ -146,10 +146,11 @@ services:
       POSTGRES_DB: n8n
     volumes:
       - ./postgres/data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro  # RAG schema init
     networks:
       - alfa-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
