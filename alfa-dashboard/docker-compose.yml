@@ -14,11 +14,13 @@ services:
     image: traefik:v3.3
     container_name: alfa-traefik
     restart: always
+    user: root
     command:
       - "--api.dashboard=true"
       - "--api.insecure=false"
       - "--ping=true"
       - "--providers.docker=true"
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=alfa-network"
       - "--entrypoints.web.address=:80"
@@ -58,7 +60,7 @@ services:
   # POSTGRESQL - Primary Database
   # ========================================
   postgres:
-    image: postgres:16-alpine
+    build: ./postgres
     container_name: alfa-postgres
     restart: always
     environment:
@@ -188,6 +190,8 @@ services:
       - EXECUTIONS_DATA_MAX_AGE=168
       - N8N_METRICS=true
       - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_JWT_SECRET:-changeme-jwt-secret}
+      - N8N_RUNNERS_MODE=external
+      - N8N_RUNNERS_PYTHON_IMAGE=n8nio/n8n-python-runner:latest
     volumes:
       - n8n_data:/home/node/.n8n
     networks:
@@ -287,12 +291,8 @@ services:
       - loki_data:/loki
     networks:
       - alfa-network
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+    # healthcheck disabled: wget not available in distroless image
+    # Loki logs show "Loki started" when healthy
 
   # ========================================
   # PROMTAIL - Log Shipper
