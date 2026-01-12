@@ -199,6 +199,101 @@ search_tools('slack message') → trouve slack-mcp/send_message
 
 ---
 
+## 🔧 MÉTHODE n8n WORKFLOWS (FIABILITÉ 98%)
+
+### Outils MCP Installés
+- **n8n-mcp** (czlonkowski/n8n-mcp ⭐11.6k): 1,084 nodes, 2,709 templates, validation multi-niveaux
+- **n8n-skills** (7 skills): Expression syntax, validation, patterns, configuration, code JS/Python
+
+### Workflow de Création (6 Étapes Obligatoires)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ÉTAPE 1: TEMPLATE FIRST (2,709 templates)                  │
+│ search_templates({searchMode: 'by_task', task: '...'})     │
+│ → Si trouvé: get_template(id, {mode: 'full'})              │
+└─────────────────────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│ ÉTAPE 2: NODE DISCOVERY (si pas de template)               │
+│ search_nodes({query: '...', includeExamples: true})        │
+│ get_node({nodeType, detail: 'standard', includeExamples})  │
+└─────────────────────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│ ÉTAPE 3: PRE-VALIDATION                                     │
+│ validate_node({mode: 'minimal'}) → Quick check             │
+│ validate_node({mode: 'full', profile: 'runtime'}) → Full   │
+└─────────────────────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│ ÉTAPE 4: CONSTRUCTION                                       │
+│ ⚠️ JAMAIS de valeurs par défaut - TOUT explicite           │
+│ Utiliser exemples réels des templates                       │
+└─────────────────────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│ ÉTAPE 5: POST-VALIDATION                                    │
+│ validate_workflow() → Workflow complet                      │
+│ validate_workflow_connections() → Structure                 │
+│ validate_workflow_expressions() → Expressions {{}}          │
+└─────────────────────────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│ ÉTAPE 6: DÉPLOIEMENT & TEST                                 │
+│ n8n_create_workflow() → Créer via API                      │
+│ n8n_validate_workflow({id}) → Valider déployé              │
+│ n8n_test_workflow({workflowId}) → Tester exécution         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Checklist Fiabilité 98%
+
+| Check | Outil/Méthode |
+|-------|---------------|
+| ✅ Template recherché | `search_templates()` |
+| ✅ Node vérifié + exemples | `get_node({includeExamples: true})` |
+| ✅ Pré-validation minimale | `validate_node({mode: 'minimal'})` |
+| ✅ Pré-validation complète | `validate_node({mode: 'full'})` |
+| ✅ Workflow validé | `validate_workflow()` |
+| ✅ Connections vérifiées | `validate_workflow_connections()` |
+| ✅ Expressions vérifiées | `validate_workflow_expressions()` |
+| ✅ Post-déploiement | `n8n_validate_workflow({id})` |
+| ✅ Test exécution | `n8n_test_workflow({workflowId})` |
+
+### Erreurs Courantes à Éviter
+
+| Erreur | Solution |
+|--------|----------|
+| Valeurs par défaut non explicites | Toujours spécifier TOUS les paramètres |
+| `scheduleTrigger` vs `schedule` | Utiliser `get_node()` pour vérifier |
+| Credentials non mappées | Pré-configurer avant import |
+| Connections mal formées | Format 4 paramètres séparés |
+
+### MCP Configuration Active
+
+```json
+{
+  "n8n-mcp": {
+    "command": "npx",
+    "args": ["n8n-mcp"],
+    "env": {
+      "N8N_API_URL": "http://localhost:5678",
+      "N8N_API_KEY": "[stored in RAG]"
+    }
+  }
+}
+```
+
+**Skills disponibles:** n8n-expression-syntax, n8n-mcp-tools-expert, n8n-workflow-patterns, n8n-validation-expert, n8n-node-configuration, n8n-code-javascript, n8n-code-python
+
+---
+
 ## 💬 PRÉFÉRENCES ARNAUD
 
 | Préférence | Valeur |
