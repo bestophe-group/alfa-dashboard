@@ -5,6 +5,45 @@ All notable changes to ALFA Dashboard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-01-12
+
+### Added
+- **RAG Knowledge Base** - Vector database for semantic search
+  - PostgreSQL pgvector extension (v0.8.1)
+  - RAG schema with 3 tables: documents, chunks, embeddings
+  - 6 SQL functions for document ingestion and search:
+    - `rag.ingest_document()` - Document ingestion with SHA256 deduplication
+    - `rag.chunk_document()` - Smart text chunking with overlap
+    - `rag.store_embedding()` - Store 1536-dimensional vectors
+    - `rag.search_vector()` - Semantic search using cosine similarity
+    - `rag.search_fulltext()` - Keyword search in French
+    - `rag.search_hybrid()` - Combined vector + fulltext (70/30 weighting)
+  - HNSW index for fast vector similarity search (m=16, ef_construction=64)
+  - GIN index for French full-text search
+  - Deduplication via SHA256 hashing (pgcrypto extension)
+  - JSONB metadata support for flexible document properties
+- Complete RAG documentation (`docs/RAG.md`)
+  - Architecture overview
+  - Database schema details
+  - Function reference with examples
+  - n8n integration guide
+  - Maintenance and performance tuning
+
+### Changed
+- **PostgreSQL image**: `postgres:16-alpine` → `pgvector/pgvector:pg16`
+- Updated `docker-compose.yml` to build custom PostgreSQL image
+- Database initialization scripts moved to `postgres/init/`
+  - `02-rag-schema.sql` - RAG schema and tables
+  - `03-rag-functions.sql` - SQL functions
+
+### Technical Details
+- Image: pgvector/pgvector:pg16 (Debian-based)
+- Extensions: vector (0.8.1), pgcrypto (1.3), uuid-ossp, plpgsql
+- Schemas: public, rag
+- Indexes: 13 indexes total (4 on documents, 5 on chunks, 4 on embeddings)
+- Vector dimensions: 1536 (OpenAI text-embedding-ada-002 compatible)
+- Default chunk size: 1000 characters with 200 character overlap
+
 ## [1.0.0] - 2026-01-06
 
 ### Added
